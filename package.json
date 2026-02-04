@@ -1,6 +1,6 @@
 {
   "name": "@v-contrib/storybook-vue-addon",
-  "version": "0.0.1",
+  "version": "0.1.0",
   "description": "Write Storybook stories using Vue SFC's",
   "keywords": [
     "storybook",
@@ -16,11 +16,19 @@
     "type": "git",
     "url": "git+https://github.com/v-contrib/storybook-vue-addon.git"
   },
-  "license": "ISC",
+  "license": "MPL-2.0",
   "author": "Jogai",
   "type": "module",
   "main": "index.js",
+  "directories": {
+    "doc": "doc"
+  },
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "lint": "eslint",
+    "lint:fix": "eslint --fix"
+  },
+  "devDependencies": {
+    "@antfu/eslint-config": "^7.2.0",
+    "eslint": "^9.39.2"
   }
 }
