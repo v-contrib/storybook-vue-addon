@@ -84,5 +84,5 @@ export interface ImportStatement {
 
 export interface TransformResult {
   code: string
-  map?: unknown
+  map?: null | { mappings: '' }
 }
