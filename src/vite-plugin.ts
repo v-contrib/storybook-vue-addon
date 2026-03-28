@@ -1,5 +1,5 @@
-import type { Plugin } from 'vite'
-import type { TransformResult } from './types'
+import type { Plugin, ResolvedConfig } from 'vite'
+import { readFileSync } from 'node:fs'
 import { generateCSF } from './codegen'
 import { parseStoriesVue } from './parse'
 
@@ -12,19 +12,26 @@ export interface VueStoriesPluginOptions {
 }
 
 export function vueStoriesPlugin(options: VueStoriesPluginOptions = {}): Plugin {
-  const { include = /\.stories\.vue$/ } = options
+  const { include = /\.svue$/ } = options
 
   return {
     name: 'vite-plugin-vue-stories',
 
+    // enforce: 'pre' ensures we run before most plugins
     enforce: 'pre',
 
-    async transform(code: string, id: string): Promise<TransformResult | undefined> {
-      if (!include.test(id)) {
-        return undefined
+    // Use the load hook to provide transformed content
+    // This runs before transform and can replace file contents entirely
+    load(id: string) {
+      // Handle query strings (HMR, etc.) - check the clean path
+      const cleanId = id.split('?')[0]
+      if (!include.test(cleanId)) {
+        return null
       }
 
       try {
+        // Read and transform the file
+        const code = readFileSync(cleanId, 'utf-8')
         const parsed = parseStoriesVue(code)
         const generated = generateCSF(parsed)
 
