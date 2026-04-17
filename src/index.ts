@@ -5,5 +5,5 @@ export type { ParsedResult, ParsedStoryResult } from './parse'
 // Default export for convenient preset usage
 export { experimental_indexers, managerEntries, previewAnnotations, viteFinal } from './preset'
 export * from './types'
-export { vueStoriesPlugin } from './vite-plugin'
+export { STORY_FILE_PATTERN, vueStoriesPlugin } from './vite-plugin'
 export type { VueStoriesPluginOptions } from './vite-plugin'
