@@ -1,6 +1,101 @@
 import type { ParsedResult } from '../parse'
 import { describe, expect, it } from 'vitest'
+import { effect, h, reactive } from 'vue'
 import { generateCSF } from '../codegen'
+
+/**
+ * Evaluate generated CSF (no imports) and return its exports.
+ * `scope` provides identifiers the code references, e.g. the component.
+ */
+function evaluateCSF(code: string, scope: Record<string, unknown>): Record<string, any> {
+  const body = code
+    .replace(/^import \{ h \} from 'vue'$/m, '')
+    .replace('if (import.meta.hot) {\n  import.meta.hot.accept()\n}', '')
+    .replace(/^export default /m, 'exports.default = ')
+    .replace(/^export const (\w+) = /gm, 'exports.$1 = ')
+  const exports: Record<string, any> = {}
+  // eslint-disable-next-line no-new-func
+  new Function('exports', 'h', ...Object.keys(scope), body)(exports, h, ...Object.values(scope))
+  return exports
+}
+
+const Button = {
+  name: 'Button',
+  props: ['label', 'primary', 'size'],
+}
+
+function parsedWith(story: ParsedResult['stories'][number]): ParsedResult {
+  return {
+    meta: { title: 'Example/Button', componentRef: 'Button' },
+    stories: [story],
+    scriptSetup: '',
+    imports: [],
+  }
+}
+
+const staticStory = {
+  name: 'Primary',
+  staticProps: { label: 'Click me', primary: true },
+  hasArgsSlot: false,
+  slotContent: '<Button label="Click me" primary />',
+}
+
+const argsStory = {
+  name: 'Playground',
+  args: { label: 'Hello' },
+  hasArgsSlot: true,
+  staticProps: {},
+  slotContent: '<Button v-bind="args" />',
+}
+
+describe('generateCSF stories work with Storybook controls', () => {
+  it.each([
+    ['static', staticStory],
+    ['args slot', argsStory],
+  ])('%s story renders from args', (_kind, story) => {
+    const { Primary, Playground } = evaluateCSF(generateCSF(parsedWith(story)), { Button })
+    const exported = Primary ?? Playground
+
+    // Storybook marks a story as an args story when render takes args
+    expect(exported.render.length).toBeGreaterThan(0)
+
+    // Like Storybook's default render: return a render function, not a VNode,
+    // so the mounted story re-renders when the Controls panel updates args
+    const args = reactive({ ...exported.args })
+    const renderFn = exported.render(args)
+    expect(typeof renderFn).toBe('function')
+
+    let label: unknown
+    effect(() => {
+      label = renderFn().props.label
+    })
+    expect(label).toBe(exported.args.label)
+
+    args.label = 'Changed by control'
+    expect(label).toBe('Changed by control')
+  })
+
+  it.each([
+    ['static', staticStory],
+    ['args slot', argsStory],
+  ])('%s story leaves docs source to Storybook', (_kind, story) => {
+    const { Primary, Playground } = evaluateCSF(generateCSF(parsedWith(story)), { Button })
+    const exported = Primary ?? Playground
+
+    // A static source.code makes Storybook skip generating the snippet from args
+    expect(exported.parameters?.docs?.source?.code).toBeUndefined()
+  })
+
+  it('keeps user parameters', () => {
+    const code = generateCSF(parsedWith({ ...staticStory, parametersRef: 'storyParams' }))
+    const { Primary } = evaluateCSF(code, {
+      Button,
+      storyParams: { layout: 'centered' },
+    })
+
+    expect(Primary.parameters).toEqual({ layout: 'centered' })
+  })
+})
 
 describe('generateCSF', () => {
   it('generates default export with meta', () => {
@@ -28,12 +123,14 @@ describe('generateCSF', () => {
         title: 'Example/Button',
         componentRef: 'Button',
       },
-      stories: [{
-        name: 'Primary',
-        staticProps: { label: 'Click me', primary: true },
-        hasArgsSlot: false,
-        slotContent: '<Button label="Click me" primary />',
-      }],
+      stories: [
+        {
+          name: 'Primary',
+          staticProps: { label: 'Click me', primary: true },
+          hasArgsSlot: false,
+          slotContent: '<Button label="Click me" primary />',
+        },
+      ],
       scriptSetup: '',
       imports: ['import Button from \'./Button.vue\''],
     }
@@ -52,13 +149,15 @@ describe('generateCSF', () => {
         title: 'Example/Button',
         componentRef: 'Button',
       },
-      stories: [{
-        name: 'Playground',
-        args: { label: 'Hello' },
-        hasArgsSlot: true,
-        staticProps: {},
-        slotContent: '<Button v-bind="args" />',
-      }],
+      stories: [
+        {
+          name: 'Playground',
+          args: { label: 'Hello' },
+          hasArgsSlot: true,
+          staticProps: {},
+          slotContent: '<Button v-bind="args" />',
+        },
+      ],
       scriptSetup: '',
       imports: ['import Button from \'./Button.vue\''],
     }
@@ -73,12 +172,14 @@ describe('generateCSF', () => {
   it('converts story names to valid identifiers', () => {
     const parsed: ParsedResult = {
       meta: { title: 'Test' },
-      stories: [{
-        name: 'With Icon',
-        staticProps: {},
-        hasArgsSlot: false,
-        slotContent: '',
-      }],
+      stories: [
+        {
+          name: 'With Icon',
+          staticProps: {},
+          hasArgsSlot: false,
+          slotContent: '',
+        },
+      ],
       scriptSetup: '',
       imports: [],
     }
@@ -170,13 +271,15 @@ describe('generateCSF', () => {
         title: 'Test',
         componentRef: 'Button',
       },
-      stories: [{
-        name: 'WithPlay',
-        playRef: 'clickButton',
-        staticProps: { label: 'Click' },
-        hasArgsSlot: false,
-        slotContent: '<Button label="Click" />',
-      }],
+      stories: [
+        {
+          name: 'WithPlay',
+          playRef: 'clickButton',
+          staticProps: { label: 'Click' },
+          hasArgsSlot: false,
+          slotContent: '<Button label="Click" />',
+        },
+      ],
       scriptSetup: '',
       imports: [],
     }

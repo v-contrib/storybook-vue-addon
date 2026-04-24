@@ -101,17 +101,12 @@ function generateStory(story: ParsedStoryResult, componentRef?: string): string 
     }
   }
 
-  // Render function
-  if (story.hasArgsSlot) {
-    // Dynamic render with args
-    lines.push(`  render: (args) => h(${componentRef || 'Component'}, args),`)
-  }
-  else if (story.slotContent && componentRef) {
-    // Static render
-    const propsStr = Object.entries(story.staticProps)
-      .map(([k, v]) => `${k}: ${formatValue(v)}`)
-      .join(', ')
-    lines.push(`  render: () => h(${componentRef}, { ${propsStr} }),`)
+  // Render function. Static props are already the story's args, so both kinds
+  // of story render from args. Like Storybook's default Vue render, return a
+  // render function rather than a VNode: Storybook updates args in place when a
+  // control changes, and only a render function re-reads them.
+  if (story.hasArgsSlot || (story.slotContent && componentRef)) {
+    lines.push(`  render: (args) => () => h(${componentRef || 'Component'}, args),`)
   }
 
   // Optional properties
@@ -125,16 +120,9 @@ function generateStory(story: ParsedStoryResult, componentRef?: string): string 
     lines.push(`  tests: ${story.testsRef},`)
   }
 
-  // Source code for docs (only if we have slot content and no custom parameters)
-  if (story.slotContent && !story.parametersRef) {
-    const escapedSource = story.slotContent.replace(/'/g, '\\\'').replace(/\n/g, '\\n')
-    lines.push('  parameters: {')
-    lines.push('    docs: {')
-    lines.push(`      source: { code: '${escapedSource}' }`)
-    lines.push('    }')
-    lines.push('  },')
-  }
-  else if (story.parametersRef) {
+  // No static docs.source.code: Storybook generates the snippet from the
+  // current args, and skips that whenever source.code is set
+  if (story.parametersRef) {
     lines.push(`  parameters: ${story.parametersRef},`)
   }
 
