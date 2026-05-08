@@ -5,7 +5,16 @@ import type {
   SimpleExpressionNode,
   TemplateChildNode,
 } from '@vue/compiler-core'
+import type { SFCBlock } from '@vue/compiler-sfc'
+import type { StoryContent } from './story-content'
 import { compileTemplate, parse as parseSfc } from '@vue/compiler-sfc'
+import { analyzeStoryContent } from './story-content'
+
+/** A raw `<script>`/`<style>` block, as needed to rebuild an SFC */
+export interface SfcBlock {
+  content: string
+  attrs: Record<string, string | true>
+}
 
 export interface ParsedResult {
   meta: {
@@ -20,6 +29,12 @@ export interface ParsedResult {
   stories: ParsedStoryResult[]
   scriptSetup: string
   imports: string[]
+  /** Raw blocks of the story file, used to compile story content */
+  blocks?: {
+    script?: SfcBlock
+    scriptSetup?: SfcBlock
+    styles: SfcBlock[]
+  }
 }
 
 export interface ParsedStoryResult {
@@ -34,6 +49,17 @@ export interface ParsedStoryResult {
   playRef?: string
   testsRef?: string
   extendsStory?: string
+  /** What is inside the story; absent for stories without content or with `extends` */
+  content?: StoryContent
+}
+
+function toBlock(block: SFCBlock | null): SfcBlock | undefined {
+  if (!block)
+    return undefined
+  return {
+    content: block.content,
+    attrs: { ...block.attrs },
+  }
 }
 
 export function parseStoriesVue(code: string): ParsedResult {
@@ -63,11 +89,29 @@ export function parseStoriesVue(code: string): ParsedResult {
   const meta = extractMeta(templateAst.children)
   const stories = extractStories(templateAst.children)
 
+  // Story content comes from the raw AST: offsets into the original source,
+  // and no compiler transforms applied
+  const rawStories = (descriptor.template.ast?.children ?? []).filter(
+    (child): child is ElementNode => child.type === 1 && child.tag === 'Story',
+  )
+  stories.forEach((story, i) => {
+    if (story.extendsStory || !rawStories[i])
+      return
+    story.content = analyzeStoryContent(rawStories[i], descriptor.source, meta.componentRef)
+    if (story.content && !story.content.simple)
+      story.staticProps = story.content.rootArgs ?? {}
+  })
+
   return {
     meta,
     stories,
     scriptSetup: removeImports(scriptSetup),
     imports,
+    blocks: {
+      script: toBlock(descriptor.script),
+      scriptSetup: toBlock(descriptor.scriptSetup),
+      styles: descriptor.styles.map(style => toBlock(style)!),
+    },
   }
 }
 

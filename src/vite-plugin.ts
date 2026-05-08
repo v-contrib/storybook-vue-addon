@@ -1,6 +1,12 @@
 import type { Plugin } from 'vite'
+import type { ParsedResult } from './parse'
+import { existsSync, readFileSync } from 'node:fs'
+import { basename, dirname, join, resolve } from 'node:path'
+import process from 'node:process'
+import { transformWithOxc } from 'vite'
 import { generateCSF } from './codegen'
 import { parseStoriesVue } from './parse'
+import { buildStoriesSfc, STORIES_SFC_SUFFIX } from './stories-sfc'
 
 /**
  * Story files handled by default: `*.stories.vue` and `*.svue`.
@@ -61,9 +67,25 @@ function skipStoryFiles(plugin: Plugin, isStory: (id: string) => boolean): void 
     : { ...transform, handler }
 }
 
+function isTypeScript(parsed: ParsedResult): boolean {
+  const lang = parsed.blocks?.scriptSetup?.attrs.lang ?? parsed.blocks?.script?.attrs.lang
+  return lang === 'ts' || lang === 'tsx'
+}
+
 export function vueStoriesPlugin(options: VueStoriesPluginOptions = {}): Plugin {
   const { include = STORY_FILE_PATTERN } = options
   const isStory = (id: string): boolean => include.test(cleanPath(id))
+  /** Story file behind a stories component id, or undefined */
+  const storyFileOf = (id: string): string | undefined => {
+    const file = cleanPath(id)
+    if (!file.endsWith(STORIES_SFC_SUFFIX))
+      return undefined
+    const storyFile = file.slice(0, -STORIES_SFC_SUFFIX.length)
+    return include.test(storyFile)
+      ? storyFile
+      : undefined
+  }
+  let root = process.cwd()
 
   return {
     name: 'vite-plugin-vue-stories',
@@ -72,6 +94,10 @@ export function vueStoriesPlugin(options: VueStoriesPluginOptions = {}): Plugin 
     enforce: 'pre',
 
     configResolved(config) {
+      root = config.root
+      // Docgen plugins must skip story files and their stories components (no file on disk)
+      const skipForDocgen = (id: string): boolean => isStory(id) || !!storyFileOf(id)
+
       for (const plugin of config.plugins) {
         if (plugin.name === VUE_PLUGIN) {
           // Preferred: plugin-vue's own exclude option
@@ -90,22 +116,68 @@ export function vueStoriesPlugin(options: VueStoriesPluginOptions = {}): Plugin 
           skipStoryFiles(plugin, isStory)
         }
         else if (VUE_DOCGEN_PLUGINS.includes(plugin.name)) {
-          skipStoryFiles(plugin, isStory)
+          skipStoryFiles(plugin, skipForDocgen)
         }
       }
     },
 
-    transform(code, id) {
+    // `./Foo.stories.vue.__stories__.vue` is virtual: it has no file on disk
+    resolveId(id, importer) {
+      if (!storyFileOf(id))
+        return null
+      const file = cleanPath(id)
+      if (importer && file.startsWith('.'))
+        return resolve(dirname(cleanPath(importer)), file)
+      if (existsSync(storyFileOf(file)!))
+        return file
+      // Root-relative URL requested by the browser in dev
+      const fromRoot = join(root, file)
+      return existsSync(storyFileOf(fromRoot)!)
+        ? fromRoot
+        : null
+    },
+
+    load(id) {
+      const storyFile = storyFileOf(id)
+      // `?vue&type=style…` sub-requests are served by plugin-vue
+      if (!storyFile || /[?&]vue\b/.test(id))
+        return null
+
+      this.addWatchFile(storyFile)
+      const sfc = buildStoriesSfc(parseStoriesVue(readFileSync(storyFile, 'utf-8')))
+      if (!sfc)
+        this.error(`${storyFile} has no stories with content to compile`)
+      return sfc
+    },
+
+    // A story file change must also update its stories component
+    hotUpdate({ file, modules }) {
+      if (!include.test(file))
+        return
+      const storiesModule = this.environment.moduleGraph.getModuleById(file + STORIES_SFC_SUFFIX)
+      if (!storiesModule)
+        return
+      this.environment.moduleGraph.invalidateModule(storiesModule)
+      return [...modules, storiesModule]
+    },
+
+    async transform(code, id) {
       const [file, query = ''] = id.split('?', 2)
       // `?vue&type=…` ids are plugin-vue sub-requests, not story modules
       if (!include.test(file) || /(?:^|&)vue\b/.test(query))
         return null
 
       try {
-        return {
-          code: generateCSF(parseStoriesVue(code)),
-          map: null,
-        }
+        const parsed = parseStoriesVue(code)
+        const csf = generateCSF(parsed, {
+          storiesImport: `./${basename(file)}${STORIES_SFC_SUFFIX}`,
+        })
+        if (!isTypeScript(parsed))
+          return { code: csf, map: null }
+
+        // The CSF module carries the file's <script setup> code
+        const result = await transformWithOxc(csf, `${file}.ts`, { lang: 'ts' })
+        return { code: result.code, map: null }
       }
       catch (error) {
         const message = error instanceof Error

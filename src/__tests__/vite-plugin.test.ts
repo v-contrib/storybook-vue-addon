@@ -1,5 +1,8 @@
 import type { Plugin } from 'vite'
+import { join } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { describe, expect, it, vi } from 'vitest'
+import { STORIES_SFC_SUFFIX } from '../stories-sfc'
 import { STORY_FILE_PATTERN, vueStoriesPlugin } from '../vite-plugin'
 
 const STORY = `
@@ -24,8 +27,8 @@ function transformHandler(plugin: Plugin): TransformFn {
     : t.handler
 }
 
-function transform(plugin: Plugin, code: string, id: string) {
-  return transformHandler(plugin).call({
+async function transform(plugin: Plugin, code: string, id: string): Promise<any> {
+  return await transformHandler(plugin).call({
     error: vi.fn(),
   }, code, id)
 }
@@ -52,55 +55,57 @@ function fakeVuePlugin(exclude?: unknown, locked = false): Plugin {
 }
 
 describe('vueStoriesPlugin', () => {
-  it('returns a Vite plugin object with a transform hook', () => {
+  it('returns a Vite plugin object with transform and stories component hooks', () => {
     const plugin = vueStoriesPlugin()
 
     expect(plugin.name).toBe('vite-plugin-vue-stories')
     expect(plugin.enforce).toBe('pre')
     expect(typeof plugin.transform).toBe('function')
-    expect(plugin.load).toBeUndefined()
+    expect(typeof plugin.resolveId).toBe('function')
+    expect(typeof plugin.load).toBe('function')
+    expect(typeof plugin.hotUpdate).toBe('function')
   })
 
-  it.each(['Button.svue', 'Button.stories.vue', '/abs/src/Button.stories.vue'])('transforms %s to CSF', (id) => {
-    const result = transform(vueStoriesPlugin(), STORY, id)
+  it.each(['Button.svue', 'Button.stories.vue', '/abs/src/Button.stories.vue'])('transforms %s to CSF', async (id) => {
+    const result = await transform(vueStoriesPlugin(), STORY, id)
 
-    expect(result.code).toContain('title: \'Test/Button\'')
+    expect(result.code).toMatch(/title: ["']Test\/Button["']/)
     expect(result.code).toContain('export const Default')
     expect(result.code).toContain('export default')
-    expect(result.code).toContain('import { h } from \'vue\'')
+    expect(result.code).toMatch(/import \{ h \} from ["']vue["']/)
   })
 
-  it.each(['Button.vue', 'Button.stories.ts', 'Button.story.vue'])('ignores %s', (id) => {
-    expect(transform(vueStoriesPlugin(), STORY, id)).toBeNull()
+  it.each(['Button.vue', 'Button.stories.ts', 'Button.story.vue'])('ignores %s', async (id) => {
+    expect(await transform(vueStoriesPlugin(), STORY, id)).toBeNull()
   })
 
-  it('handles query strings in file paths', () => {
+  it('handles query strings in file paths', async () => {
     const plugin = vueStoriesPlugin()
 
-    expect(transform(plugin, STORY, 'Button.svue?import').code).toContain('export const Default')
-    expect(transform(plugin, STORY, 'Button.stories.vue?t=123').code).toContain('export const Default')
+    expect((await transform(plugin, STORY, 'Button.svue?import')).code).toContain('export const Default')
+    expect((await transform(plugin, STORY, 'Button.stories.vue?t=123')).code).toContain('export const Default')
   })
 
-  it('ignores plugin-vue sub-requests', () => {
-    expect(transform(vueStoriesPlugin(), STORY, 'Button.stories.vue?vue&type=style&index=0&lang.css')).toBeNull()
+  it('ignores plugin-vue sub-requests', async () => {
+    expect(await transform(vueStoriesPlugin(), STORY, 'Button.stories.vue?vue&type=style&index=0&lang.css')).toBeNull()
   })
 
-  it('uses custom include pattern', () => {
+  it('uses custom include pattern', async () => {
     const plugin = vueStoriesPlugin({ include: /\.story\.vue$/ })
 
-    expect(transform(plugin, STORY, 'Button.svue')).toBeNull()
-    expect(transform(plugin, STORY, 'Button.story.vue').code).toContain('export const Default')
+    expect(await transform(plugin, STORY, 'Button.svue')).toBeNull()
+    expect((await transform(plugin, STORY, 'Button.story.vue')).code).toContain('export const Default')
   })
 
-  it('reports parse errors through this.error', () => {
+  it('reports parse errors through this.error', async () => {
     const error = vi.fn()
-    transformHandler(vueStoriesPlugin()).call({ error }, '<template><Story', 'Broken.stories.vue')
+    await transformHandler(vueStoriesPlugin()).call({ error }, '<template><Story', 'Broken.stories.vue')
 
     expect(error).toHaveBeenCalledWith(expect.stringContaining('Failed to transform Broken.stories.vue'))
   })
 })
 
-describe('sTORY_FILE_PATTERN', () => {
+describe('story file pattern', () => {
   it.each([
     ['Button.stories.vue', true],
     ['Button.svue', true],
@@ -139,17 +144,17 @@ describe('configResolved', () => {
     expect(vue.api.exclude).toEqual([/\.story\.vue$/])
   })
 
-  it('falls back to guarding plugin-vue transform when exclude is locked', () => {
+  it('falls back to guarding plugin-vue transform when exclude is locked', async () => {
     const vue = fakeVuePlugin(undefined, true)
     const original = vue.transform as ReturnType<typeof vi.fn>
     configResolved(vueStoriesPlugin(), [vue])
 
-    expect(transform(vue, 'csf', '/src/Button.stories.vue')).toBeNull()
-    expect(transform(vue, '<template/>', '/src/Button.vue')).toBe('vue output')
+    expect(await transform(vue, 'csf', '/src/Button.stories.vue')).toBeNull()
+    expect(await transform(vue, '<template/>', '/src/Button.vue')).toBe('vue output')
     expect(original).toHaveBeenCalledTimes(1)
   })
 
-  it('guards Storybook docgen transforms (object hook with filter)', () => {
+  it('guards Storybook docgen transforms (object hook with filter)', async () => {
     const handler = vi.fn(() => 'docgen output')
     const docgen: Plugin = {
       name: 'storybook:vue-docgen-plugin',
@@ -164,8 +169,8 @@ describe('configResolved', () => {
     const t = docgen.transform as any
     expect(t.order).toBe('post')
     expect(t.filter).toEqual({ id: /\.(vue)$/ })
-    expect(transform(docgen, 'csf', '/src/Button.stories.vue')).toBeNull()
-    expect(transform(docgen, '<template/>', '/src/Button.vue')).toBe('docgen output')
+    expect(await transform(docgen, 'csf', '/src/Button.stories.vue')).toBeNull()
+    expect(await transform(docgen, '<template/>', '/src/Button.vue')).toBe('docgen output')
     expect(handler).toHaveBeenCalledTimes(1)
   })
 
@@ -175,5 +180,103 @@ describe('configResolved', () => {
     configResolved(vueStoriesPlugin(), [other])
 
     expect(other.transform).toBe(t)
+  })
+})
+
+describe('stories component hooks', () => {
+  const fixtures = fileURLToPath(new URL('./fixtures', import.meta.url))
+  const storyFile = join(fixtures, 'Card.stories.vue')
+  const storiesId = `${storyFile}${STORIES_SFC_SUFFIX}`
+
+  function hook<T extends keyof Plugin>(plugin: Plugin, name: T): (...args: any[]) => any {
+    const h = plugin[name] as any
+    return typeof h === 'function'
+      ? h
+      : h.handler
+  }
+
+  function withRoot(root: string): Plugin {
+    const plugin = vueStoriesPlugin();
+    (plugin.configResolved as any)({ plugins: [], root })
+    return plugin
+  }
+
+  it('resolves the stories component next to its story file', () => {
+    const resolve = hook(withRoot(fixtures), 'resolveId')
+
+    expect(resolve(`./Card.stories.vue${STORIES_SFC_SUFFIX}`, storyFile)).toBe(storiesId)
+    expect(resolve(storiesId)).toBe(storiesId)
+    // Root-relative URL from the browser
+    expect(resolve(`/Card.stories.vue${STORIES_SFC_SUFFIX}`)).toBe(storiesId)
+    expect(resolve('./Card.vue', storyFile)).toBeNull()
+    expect(resolve(`./Card.vue${STORIES_SFC_SUFFIX}`, storyFile)).toBeNull()
+  })
+
+  it('loads the stories component and watches the story file', () => {
+    const load = hook(vueStoriesPlugin(), 'load')
+    const ctx = {
+      addWatchFile: vi.fn(),
+      error: vi.fn(),
+    }
+
+    const sfc = load.call(ctx, storiesId)
+    expect(sfc).toContain('defineProps([\'args\', \'vueCsfStory\'])')
+    expect(sfc).toContain('<template v-if="vueCsfStory === \'StaticSlots\'">')
+    expect(ctx.addWatchFile).toHaveBeenCalledWith(storyFile)
+
+    // plugin-vue serves its own sub-requests, and other ids are not ours
+    expect(load.call(ctx, `${storiesId}?vue&type=style&index=0&lang.css`)).toBeNull()
+    expect(load.call(ctx, storyFile)).toBeNull()
+  })
+
+  it('updates the stories component when its story file changes', () => {
+    const update = hook(vueStoriesPlugin(), 'hotUpdate')
+    const storiesModule = { id: storiesId }
+    const storyModule = { id: storyFile }
+    const moduleGraph = {
+      getModuleById: vi.fn((id: string) => id === storiesId
+        ? storiesModule
+        : undefined),
+      invalidateModule: vi.fn(),
+    }
+    const ctx = {
+      environment: { moduleGraph },
+    }
+
+    expect(update.call(ctx, {
+      file: storyFile,
+      modules: [storyModule],
+    })).toEqual([storyModule, storiesModule])
+    expect(moduleGraph.invalidateModule).toHaveBeenCalledWith(storiesModule)
+
+    // Other files, and story files without a loaded stories component
+    expect(update.call(ctx, {
+      file: join(fixtures, 'Card.vue'),
+      modules: [],
+    })).toBeUndefined()
+    moduleGraph.getModuleById.mockReturnValue(undefined)
+    expect(update.call(ctx, {
+      file: storyFile,
+      modules: [storyModule],
+    })).toBeUndefined()
+  })
+
+  it('keeps Storybook docgen away from stories components too', async () => {
+    const handler = vi.fn(() => 'docgen output')
+    const docgen: Plugin = {
+      name: 'storybook:vue-docgen-plugin',
+      transform: { handler },
+    }
+    configResolved(vueStoriesPlugin(), [docgen])
+
+    expect(await transform(docgen, 'sfc', storiesId)).toBeNull()
+    expect(handler).not.toHaveBeenCalled()
+  })
+
+  it('does not exclude stories components from plugin-vue', () => {
+    const vue = fakeVuePlugin()
+    configResolved(vueStoriesPlugin(), [vue])
+
+    expect((vue.api.exclude as RegExp[]).some(re => re.test(storiesId))).toBe(false)
   })
 })

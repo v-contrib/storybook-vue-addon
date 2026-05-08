@@ -2,6 +2,7 @@ import type { ParsedResult } from '../parse'
 import { describe, expect, it } from 'vitest'
 import { effect, h, reactive } from 'vue'
 import { generateCSF } from '../codegen'
+import { parseStoriesVue } from '../parse'
 
 /**
  * Evaluate generated CSF (no imports) and return its exports.
@@ -287,5 +288,46 @@ describe('generateCSF', () => {
     const result = generateCSF(parsed)
 
     expect(result).toContain('play: clickButton')
+  })
+})
+
+describe('generateCSF stories with content', () => {
+  const source = `<script setup>
+import Card from './Card.vue'
+const storyParams = { layout: 'centered', docs: { description: { story: 'Hi' } } }
+</script>
+<template>
+  <Meta title="Test/Card" :component="Card" />
+  <Story name="Slots" :parameters="storyParams"><Card title="Hi">Body</Card></Story>
+  <Story name="Plain"><Card title="Hi" /></Story>
+</template>
+`
+
+  it('renders through the stories component and keeps simple stories as they were', () => {
+    const code = generateCSF(parseStoriesVue(source), { storiesImport: './Card.stories.vue.__stories__.vue' })
+
+    expect(code).toContain('import __VueCsfStories from \'./Card.stories.vue.__stories__.vue\'')
+    expect(code).toContain('render: (args) => () => h(__VueCsfStories, { args, vueCsfStory: \'Slots\' }),')
+    expect(code).toContain('render: (args) => () => h(Card, args),')
+  })
+
+  it('merges the docs transform into user parameters', () => {
+    const code = generateCSF(parseStoriesVue(source))
+      .replace(/^import .*$/gm, '')
+    const { Slots, Plain } = evaluateCSF(code, { Card: Button, __VueCsfStories: {} })
+
+    expect(Slots.parameters.layout).toBe('centered')
+    expect(Slots.parameters.docs.description).toEqual({ story: 'Hi' })
+    expect(Slots.parameters.docs.source.transform('', {
+      args: { title: 'Bye' },
+    })).toBe('<Card title="Bye">Body</Card>')
+    expect(Plain.parameters).toBeUndefined()
+  })
+
+  it('does not emit the stories import when no story needs it', () => {
+    const code = generateCSF(parseStoriesVue(source.replace(/<Story name="Slots".*<\/Story>\n/, '')))
+
+    expect(code).not.toContain('__VueCsfStories')
+    expect(code).not.toContain('__vueCsfAttrs')
   })
 })

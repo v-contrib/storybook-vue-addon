@@ -1,10 +1,61 @@
 import type { ParsedResult, ParsedStoryResult } from './parse'
+import type { SourcePart } from './story-content'
+import { toValidIdentifier } from './identifier'
+import { needsStoriesSfc, STORIES_SFC_SUFFIX, STORY_PROP } from './stories-sfc'
 
-export function generateCSF(parsed: ParsedResult): string {
+export interface GenerateCSFOptions {
+  /**
+   * Import path of the stories component (see buildStoriesSfc).
+   * @default `./stories${STORIES_SFC_SUFFIX}`
+   */
+  storiesImport?: string
+}
+
+/** Local name of the imported stories component */
+const STORIES_COMPONENT = '__VueCsfStories'
+
+/**
+ * Helpers for the docs snippet of stories with content. They turn current arg
+ * values into template attributes and text, close to Storybook's own Vue snippet.
+ */
+const SOURCE_HELPERS = `function __vueCsfAttr(name, value) {
+  if (value === undefined || value === null || value === false || typeof value === 'function')
+    return ''
+  if (value === true)
+    return ' ' + name
+  if (typeof value === 'string')
+    return ' ' + name + '="' + value.replace(/"/g, '&quot;') + '"'
+  return ' :' + name + '="' + JSON.stringify(value).replace(/"/g, "'") + '"'
+}
+
+function __vueCsfAttrs(args) {
+  return Object.entries(args || {}).map(([name, value]) => __vueCsfAttr(name, value)).join('')
+}
+
+function __vueCsfText(value) {
+  if (value === undefined || value === null)
+    return ''
+  return typeof value === 'object' ? JSON.stringify(value) : String(value)
+}
+
+function __vueCsfDedent(code) {
+  const lines = code.split('\\n')
+  const indents = lines.filter(line => line.trim()).map(line => line.match(/^ */)[0].length)
+  const min = indents.length ? Math.min(...indents) : 0
+  return lines.map(line => line.slice(min)).join('\\n').trim()
+}`
+
+export function generateCSF(parsed: ParsedResult, options: GenerateCSFOptions = {}): string {
   const lines: string[] = []
+  const usesStoriesSfc = parsed.stories.some(needsStoriesSfc)
 
   // Add Vue's h import for render functions
   lines.push('import { h } from \'vue\'')
+
+  if (usesStoriesSfc) {
+    const path = options.storiesImport ?? `./stories${STORIES_SFC_SUFFIX}`
+    lines.push(`import ${STORIES_COMPONENT} from '${path}'`)
+  }
 
   // Add original imports
   for (const imp of parsed.imports) {
@@ -16,6 +67,11 @@ export function generateCSF(parsed: ParsedResult): string {
   // Add script setup code (variables, argTypes, etc.)
   if (parsed.scriptSetup.trim()) {
     lines.push(parsed.scriptSetup)
+    lines.push('')
+  }
+
+  if (usesStoriesSfc) {
+    lines.push(SOURCE_HELPERS)
     lines.push('')
   }
 
@@ -101,11 +157,16 @@ function generateStory(story: ParsedStoryResult, componentRef?: string): string 
     }
   }
 
-  // Render function. Static props are already the story's args, so both kinds
-  // of story render from args. Like Storybook's default Vue render, return a
-  // render function rather than a VNode: Storybook updates args in place when a
+  // Render function. Like Storybook's default Vue render, return a render
+  // function rather than a VNode: Storybook updates args in place when a
   // control changes, and only a render function re-reads them.
-  if (story.hasArgsSlot || (story.slotContent && componentRef)) {
+  const compiled = needsStoriesSfc(story)
+  if (compiled) {
+    // Story content is compiled into the stories component; it gets args as a prop
+    lines.push(`  render: (args) => () => h(${STORIES_COMPONENT}, { args, ${STORY_PROP}: '${storyName}' }),`)
+  }
+  else if (story.hasArgsSlot || (story.slotContent && componentRef)) {
+    // Only the meta component: static props are already the story's args
     lines.push(`  render: (args) => () => h(${componentRef || 'Component'}, args),`)
   }
 
@@ -120,9 +181,20 @@ function generateStory(story: ParsedStoryResult, componentRef?: string): string 
     lines.push(`  tests: ${story.testsRef},`)
   }
 
-  // No static docs.source.code: Storybook generates the snippet from the
-  // current args, and skips that whenever source.code is set
-  if (story.parametersRef) {
+  // Docs snippet. Never a static docs.source.code: Storybook shows that
+  // verbatim and stops following the args. Simple stories use Storybook's own
+  // snippet; stories with content get a transform that fills in the args.
+  if (compiled) {
+    const transform = `transform: (_code, { args }) => ${sourceExpression(story.content!.sourceParts)}`
+    if (story.parametersRef) {
+      const p = story.parametersRef
+      lines.push(`  parameters: { ...${p}, docs: { ...${p}?.docs, source: { ${transform}, ...${p}?.docs?.source } } },`)
+    }
+    else {
+      lines.push(`  parameters: { docs: { source: { ${transform} } } },`)
+    }
+  }
+  else if (story.parametersRef) {
     lines.push(`  parameters: ${story.parametersRef},`)
   }
 
@@ -130,25 +202,56 @@ function generateStory(story: ParsedStoryResult, componentRef?: string): string 
   return lines.join('\n')
 }
 
-function toValidIdentifier(name: string): string {
-  return name
-    .replace(/[^a-z0-9]/gi, ' ')
-    .split(' ')
-    .filter(Boolean)
-    .map(word => word.charAt(0).toUpperCase() + word.slice(1))
-    .join('')
+/** `args.items[0].name` -> `args?.items?.[0]?.name` */
+function optionalPath(path: string): string {
+  return path.replace(/\.(?=[A-Z_$])/gi, '?.').replace(/\[/g, '?.[')
+}
+
+function escapeTemplateLiteral(text: string): string {
+  return text.replace(/\\/g, '\\\\').replace(/`/g, '\\`').replace(/\$\{/g, '\\${')
+}
+
+/** JS expression building the docs snippet from `args` */
+function sourceExpression(parts: SourcePart[]): string {
+  const body = parts.map((part) => {
+    switch (part.kind) {
+      case 'text':
+        return escapeTemplateLiteral(part.text)
+      case 'attrs':
+        // A `${…}` placeholder inside the generated template literal
+        // eslint-disable-next-line no-template-curly-in-string
+        return '${__vueCsfAttrs(args)}'
+      case 'attr':
+        return `\${__vueCsfAttr('${part.name}', ${optionalPath(part.path)})}`
+      case 'interp':
+        return `\${__vueCsfText(${optionalPath(part.path)})}`
+      default:
+        return ''
+    }
+  }).join('')
+  return `__vueCsfDedent(\`${body}\`)`
+}
+
+function formatKey(key: string): string {
+  return /^[A-Z_$][\w$]*$/i.test(key)
+    ? key
+    : `'${escapeString(key)}'`
+}
+
+function escapeString(value: string): string {
+  return value.replace(/\\/g, '\\\\').replace(/'/g, '\\\'').replace(/\n/g, '\\n')
 }
 
 function formatObject(obj: Record<string, unknown>): string {
   const entries = Object.entries(obj)
-    .map(([k, v]) => `${k}: ${formatValue(v)}`)
+    .map(([k, v]) => `${formatKey(k)}: ${formatValue(v)}`)
     .join(', ')
   return `{ ${entries} }`
 }
 
 function formatValue(value: unknown): string {
   if (typeof value === 'string')
-    return `'${value}'`
+    return `'${escapeString(value)}'`
   if (typeof value === 'boolean')
     return String(value)
   if (typeof value === 'number')
