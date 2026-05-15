@@ -166,7 +166,7 @@ describe('generateCSF', () => {
     const result = generateCSF(parsed)
 
     expect(result).toContain('export const Playground')
-    expect(result).toContain('render: (args)')
+    expect(result).toContain('render: (args, context)')
     expect(result).toContain('label: \'Hello\'')
   })
 
@@ -307,8 +307,8 @@ const storyParams = { layout: 'centered', docs: { description: { story: 'Hi' } }
     const code = generateCSF(parseStoriesVue(source), { storiesImport: './Card.stories.vue.__stories__.vue' })
 
     expect(code).toContain('import __VueCsfStories from \'./Card.stories.vue.__stories__.vue\'')
-    expect(code).toContain('render: (args) => () => h(__VueCsfStories, { args, vueCsfStory: \'Slots\' }),')
-    expect(code).toContain('render: (args) => () => h(Card, args),')
+    expect(code).toContain('return h(__VueCsfStories, { args: props, vueCsfSlots: slots, vueCsfStory: \'Slots\' })')
+    expect(code).toContain('return h(Card, props, slots)')
   })
 
   it('merges the docs transform into user parameters', () => {
@@ -322,6 +322,34 @@ const storyParams = { layout: 'centered', docs: { description: { story: 'Hi' } }
       args: { title: 'Bye' },
     })).toBe('<Card title="Bye">Body</Card>')
     expect(Plain.parameters).toBeUndefined()
+  })
+
+  it('highlights docs snippets as HTML, keeping user meta parameters', () => {
+    const code = generateCSF(parseStoriesVue(source)).replace(/^import .*$/gm, '')
+    const withMeta = generateCSF(parseStoriesVue(source.replace(':component="Card"', ':component="Card" :parameters="metaParams"')))
+      .replace(/^import .*$/gm, '')
+
+    expect(evaluateCSF(code, { Card: Button, __VueCsfStories: {} }).default.parameters)
+      .toEqual({
+        docs: {
+          source: { language: 'html' },
+        },
+      })
+    expect(evaluateCSF(withMeta, {
+      Card: Button,
+      __VueCsfStories: {},
+      metaParams: {
+        layout: 'centered',
+        docs: {
+          source: { language: 'tsx' },
+        },
+      },
+    }).default.parameters).toEqual({
+      layout: 'centered',
+      docs: {
+        source: { language: 'tsx' },
+      },
+    })
   })
 
   it('does not emit the stories import when no story needs it', () => {

@@ -1,7 +1,7 @@
 import type { ParsedResult, ParsedStoryResult } from './parse'
 import type { SourcePart } from './story-content'
 import { toValidIdentifier } from './identifier'
-import { needsStoriesSfc, STORIES_SFC_SUFFIX, STORY_PROP } from './stories-sfc'
+import { needsStoriesSfc, SLOTS_PROP, STORIES_SFC_SUFFIX, STORY_PROP } from './stories-sfc'
 
 export interface GenerateCSFOptions {
   /**
@@ -13,6 +13,30 @@ export interface GenerateCSFOptions {
 
 /** Local name of the imported stories component */
 const STORIES_COMPONENT = '__VueCsfStories'
+
+/**
+ * Splits args into props and slots, like Storybook's own Vue render: args whose
+ * argType is in the "slots" category (from docgen) fill the component's slots.
+ * Empty values leave the slot alone; objects are shown as JSON.
+ */
+const RENDER_HELPERS = `function __vueCsfSplitArgs(args, context) {
+  const argTypes = context?.argTypes || {}
+  const props = {}
+  const slots = {}
+  for (const [name, value] of Object.entries(args || {})) {
+    if (argTypes[name]?.table?.category !== 'slots')
+      props[name] = value
+    else if (value !== undefined && value !== null && value !== '')
+      slots[name] = typeof value === 'function' ? value : () => __vueCsfSlotContent(value)
+  }
+  return { props, slots }
+}
+
+function __vueCsfSlotContent(value) {
+  return typeof value === 'object' && !Array.isArray(value) && !value.__v_isVNode
+    ? JSON.stringify(value)
+    : value
+}`
 
 /**
  * Helpers for the docs snippet of stories with content. They turn current arg
@@ -70,6 +94,11 @@ export function generateCSF(parsed: ParsedResult, options: GenerateCSFOptions = 
     lines.push('')
   }
 
+  if (parsed.stories.length > 0) {
+    lines.push(RENDER_HELPERS)
+    lines.push('')
+  }
+
   if (usesStoriesSfc) {
     lines.push(SOURCE_HELPERS)
     lines.push('')
@@ -91,8 +120,13 @@ export function generateCSF(parsed: ParsedResult, options: GenerateCSFOptions = 
   if (parsed.meta.decoratorsRef) {
     lines.push(`  decorators: ${parsed.meta.decoratorsRef},`)
   }
+  // Snippets are Vue templates; the default (jsx) can't highlight `#slot` attributes
   if (parsed.meta.parametersRef) {
-    lines.push(`  parameters: ${parsed.meta.parametersRef},`)
+    const p = parsed.meta.parametersRef
+    lines.push(`  parameters: { ...${p}, docs: { ...${p}?.docs, source: { language: 'html', ...${p}?.docs?.source } } },`)
+  }
+  else {
+    lines.push(`  parameters: { docs: { source: { language: 'html' } } },`)
   }
   if (parsed.meta.tags) {
     lines.push(`  tags: [${parsed.meta.tags.map(t => `'${t}'`).join(', ')}],`)
@@ -163,11 +197,17 @@ function generateStory(story: ParsedStoryResult, componentRef?: string): string 
   const compiled = needsStoriesSfc(story)
   if (compiled) {
     // Story content is compiled into the stories component; it gets args as a prop
-    lines.push(`  render: (args) => () => h(${STORIES_COMPONENT}, { args, ${STORY_PROP}: '${storyName}' }),`)
+    lines.push(`  render: (args, context) => () => {`)
+    lines.push(`    const { props, slots } = __vueCsfSplitArgs(args, context)`)
+    lines.push(`    return h(${STORIES_COMPONENT}, { args: props, ${SLOTS_PROP}: slots, ${STORY_PROP}: '${storyName}' })`)
+    lines.push(`  },`)
   }
   else if (story.hasArgsSlot || (story.slotContent && componentRef)) {
     // Only the meta component: static props are already the story's args
-    lines.push(`  render: (args) => () => h(${componentRef || 'Component'}, args),`)
+    lines.push(`  render: (args, context) => () => {`)
+    lines.push(`    const { props, slots } = __vueCsfSplitArgs(args, context)`)
+    lines.push(`    return h(${componentRef || 'Component'}, props, slots)`)
+    lines.push(`  },`)
   }
 
   // Optional properties
@@ -185,7 +225,8 @@ function generateStory(story: ParsedStoryResult, componentRef?: string): string 
   // verbatim and stops following the args. Simple stories use Storybook's own
   // snippet; stories with content get a transform that fills in the args.
   if (compiled) {
-    const transform = `transform: (_code, { args }) => ${sourceExpression(story.content!.sourceParts)}`
+    // Slot args are not attributes; leave them out
+    const transform = `transform: (_code, context) => {\n      const args = __vueCsfSplitArgs(context.args, context).props\n      return ${sourceExpression(story.content!.sourceParts)}\n    }`
     if (story.parametersRef) {
       const p = story.parametersRef
       lines.push(`  parameters: { ...${p}, docs: { ...${p}?.docs, source: { ${transform}, ...${p}?.docs?.source } } },`)

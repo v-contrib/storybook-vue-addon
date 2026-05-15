@@ -226,13 +226,13 @@ describe('.stories.vue with story content follows Controls (client compile)', ()
   afterAll(() => server.close())
 
   /** Mount like Storybook's renderToCanvas, then update args in place like its updateArgs */
-  async function mountAndUpdate(name: string, update: Record<string, unknown>): Promise<[string, string]> {
+  async function mountAndUpdate(name: string, update: Record<string, unknown>, argTypes: Record<string, unknown> = {}): Promise<[string, string]> {
     const story = mod[name]
     const args = reactive({
       ...mod.default.args,
       ...story.args,
     })
-    const read = createTestRenderer().mount(story.render(args, { args }))
+    const read = createTestRenderer().mount(story.render(args, { args, argTypes }))
     const before = read()
     Object.assign(args, update)
     await nextTick()
@@ -256,5 +256,55 @@ describe('.stories.vue with story content follows Controls (client compile)', ()
     expect(before).toContain('<article class="card elevated">')
     expect(after).toContain('<article class="card">')
     expect(after).toContain('<strong>Header slot</strong>')
+  })
+
+  /** Docgen puts slots in the "slots" category; Storybook's own render turns those args into slots */
+  const slotArgTypes = {
+    header: {
+      table: { category: 'slots' },
+    },
+    footer: {
+      table: { category: 'slots' },
+    },
+  }
+
+  it('slot args from Controls replace slots written in the template', async () => {
+    const [before, after] = await mountAndUpdate('StaticSlots', { footer: 'From controls' }, slotArgTypes)
+
+    expect(before).toContain('<footer> Footer 2026</footer>')
+    expect(after).toContain('<footer>From controls</footer>')
+    expect(after).toContain('<strong>Header slot</strong>')
+    expect(after).toContain('<article class="card elevated">')
+  })
+
+  it('slot args from Controls fill slots the template does not write', async () => {
+    const [before, after] = await mountAndUpdate('ArgsSlots', { footer: 'From controls', title: 'Changed' }, slotArgTypes)
+
+    expect(before).toContain('<footer></footer>')
+    expect(after).toContain('<footer>From controls</footer>')
+    expect(after).toContain('Header for Changed')
+  })
+
+  it('slot args from Controls fill slots of a simple story', async () => {
+    const [, after] = await mountAndUpdate('Simple', { header: 'From controls' }, slotArgTypes)
+
+    expect(after).toContain('<header>From controls</header>')
+  })
+
+  it('shows an object slot arg as JSON', async () => {
+    const [, after] = await mountAndUpdate('StaticSlots', {
+      footer: { year: 1999 },
+    }, slotArgTypes)
+
+    expect(after).toContain('<footer>{"year":1999}</footer>')
+  })
+
+  it('leaves slot args out of the docs snippet attributes', () => {
+    const snippet = mod.StaticSlots.parameters.docs.source.transform('', {
+      args: { title: 'T', footer: 'From controls' },
+      argTypes: slotArgTypes,
+    })
+
+    expect(snippet.split('\n')[0]).toBe('<Card title="T">')
   })
 })

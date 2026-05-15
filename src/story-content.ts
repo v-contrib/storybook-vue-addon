@@ -36,6 +36,12 @@ export interface StoryContent {
   rootArgs?: Record<string, unknown>
 }
 
+/**
+ * Tag the meta component gets at the root of a compiled story. The stories
+ * component defines it as a wrapper that adds slots set from Controls.
+ */
+export const ROOT_COMPONENT = 'VueCsfRoot'
+
 const NODE_ELEMENT = 1
 const NODE_TEXT = 2
 const NODE_COMMENT = 3
@@ -171,6 +177,18 @@ export function analyzeStoryContent(
       text: '',
       part: { kind: 'attrs' },
     })
+  }
+
+  // The meta component at the root renders through the wrapper (template only;
+  // the docs snippet keeps the real tag)
+  for (const node of nodes) {
+    if (!isElement(node) || !isComponentTag(node.tag, componentRef))
+      continue
+    const open = node.loc.start.offset + 1
+    templateEdits.push({ start: open, end: open + node.tag.length, text: ROOT_COMPONENT })
+    const close = source.lastIndexOf(`</${node.tag}`, node.loc.end.offset)
+    if (close > node.loc.start.offset)
+      templateEdits.push({ start: close + 2, end: close + 2 + node.tag.length, text: ROOT_COMPONENT })
   }
 
   // Docs snippet placeholders for args bindings anywhere in the content

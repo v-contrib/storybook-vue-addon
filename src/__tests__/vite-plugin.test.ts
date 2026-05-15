@@ -220,7 +220,7 @@ describe('stories component hooks', () => {
     }
 
     const sfc = load.call(ctx, storiesId)
-    expect(sfc).toContain('defineProps([\'args\', \'vueCsfStory\'])')
+    expect(sfc).toContain('defineProps([\'args\', \'vueCsfStory\', \'vueCsfSlots\'])')
     expect(sfc).toContain('<template v-if="vueCsfStory === \'StaticSlots\'">')
     expect(ctx.addWatchFile).toHaveBeenCalledWith(storyFile)
 

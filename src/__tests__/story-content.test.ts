@@ -47,7 +47,7 @@ describe('story content analysis', () => {
     const story = storyOf('<Story name="S"><Card title="Hi" aria-label="Card" elevated>Body</Card></Story>')
 
     expect(story.staticProps).toEqual({ 'title': 'Hi', 'aria-label': 'Card', 'elevated': true })
-    expect(story.content?.template).toBe('<Card v-bind="args">Body</Card>')
+    expect(story.content?.template).toBe('<VueCsfRoot v-bind="args">Body</VueCsfRoot>')
   })
 
   it('leaves non-component roots and bound attributes alone', () => {
@@ -64,7 +64,8 @@ describe('story content analysis', () => {
     </template>
   </Story>`)
 
-    expect(story.content?.template).toBe('<Card v-bind="args">{{ args.title }}</Card>')
+    // The meta component renders through the root wrapper; the snippet keeps the tag
+    expect(story.content?.template).toBe('<VueCsfRoot v-bind="args">{{ args.title }}</VueCsfRoot>')
     expect(story.content?.sourceParts).toEqual([
       { kind: 'text', text: '      <Card' },
       { kind: 'attrs' },
@@ -100,15 +101,23 @@ describe('buildStoriesSfc', () => {
 import Card from './Card.vue'
 const note: string = 'x'
 
-defineProps(['args', 'vueCsfStory'])
+const __vueCsfProps = defineProps(['args', 'vueCsfStory', 'vueCsfSlots'])
+import { h as __vueCsfH } from 'vue'
+const VueCsfRoot = Object.assign(
+  (_props, { attrs, slots }) => __vueCsfH(Card, attrs, {
+    ...Object.fromEntries(Object.entries(slots).filter(([name]) => name !== '_')),
+    ...__vueCsfProps.vueCsfSlots,
+  }),
+  { inheritAttrs: false },
+)
 </script>
 
 <template>
 <template v-if="vueCsfStory === 'WithSlot'">
-<Card v-bind="args">Body</Card>
+<VueCsfRoot v-bind="args">Body</VueCsfRoot>
 </template>
 <template v-else-if="vueCsfStory === 'Two'">
-<Card /><Card />
+<VueCsfRoot /><VueCsfRoot />
 </template>
 </template>
 

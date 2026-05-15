@@ -1,5 +1,6 @@
 import type { ParsedResult, ParsedStoryResult, SfcBlock } from './parse'
 import { toValidIdentifier } from './identifier'
+import { ROOT_COMPONENT } from './story-content'
 
 /**
  * The stories component of `Foo.stories.vue` is the virtual module
@@ -9,6 +10,9 @@ export const STORIES_SFC_SUFFIX = '.__stories__.vue'
 
 /** Prop that selects which story the stories component renders */
 export const STORY_PROP = 'vueCsfStory'
+
+/** Prop with the slots set from Controls, as slot functions */
+export const SLOTS_PROP = 'vueCsfSlots'
 
 /**
  * Stories rendered by the stories component: those with content beyond the
@@ -51,9 +55,23 @@ export function buildStoriesSfc(parsed: ParsedResult): string | null {
     content: '',
     attrs: { setup: true },
   }
+  const componentRef = parsed.meta.componentRef
+  // The meta component at a story's root: its slots from the template, with
+  // slots set from Controls on top (like Storybook's own Vue render)
+  const root = componentRef
+    ? `import { h as __vueCsfH } from 'vue'
+const ${ROOT_COMPONENT} = Object.assign(
+  (_props, { attrs, slots }) => __vueCsfH(${componentRef}, attrs, {
+    ...Object.fromEntries(Object.entries(slots).filter(([name]) => name !== '_')),
+    ...__vueCsfProps.${SLOTS_PROP},
+  }),
+  { inheritAttrs: false },
+)
+`
+    : ''
   parts.push(block('script', {
     attrs: setup.attrs,
-    content: `${setup.content}\ndefineProps(['args', '${STORY_PROP}'])\n`,
+    content: `${setup.content}\nconst __vueCsfProps = defineProps(['args', '${STORY_PROP}', '${SLOTS_PROP}'])\n${root}`,
   }))
 
   const branches = stories.map((story, i) => {
