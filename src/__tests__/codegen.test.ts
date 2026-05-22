@@ -324,17 +324,19 @@ const storyParams = { layout: 'centered', docs: { description: { story: 'Hi' } }
     expect(Plain.parameters).toBeUndefined()
   })
 
-  it('highlights docs snippets as HTML, keeping user meta parameters', () => {
+  it('sets meta parameters for .stories.vue, keeping user meta parameters', () => {
     const code = generateCSF(parseStoriesVue(source)).replace(/^import .*$/gm, '')
     const withMeta = generateCSF(parseStoriesVue(source.replace(':component="Card"', ':component="Card" :parameters="metaParams"')))
       .replace(/^import .*$/gm, '')
 
-    expect(evaluateCSF(code, { Card: Button, __VueCsfStories: {} }).default.parameters)
-      .toEqual({
-        docs: {
-          source: { language: 'html' },
-        },
-      })
+    // Snippets are Vue templates (html highlighting); Storybook's "save story"
+    // rewrites CSF JavaScript and can't write a .stories.vue file
+    expect(evaluateCSF(code, { Card: Button, __VueCsfStories: {} }).default.parameters).toEqual({
+      docs: {
+        source: { language: 'html' },
+      },
+      controls: { disableSaveFromUI: true },
+    })
     expect(evaluateCSF(withMeta, {
       Card: Button,
       __VueCsfStories: {},
@@ -343,12 +345,14 @@ const storyParams = { layout: 'centered', docs: { description: { story: 'Hi' } }
         docs: {
           source: { language: 'tsx' },
         },
+        controls: { expanded: true },
       },
     }).default.parameters).toEqual({
       layout: 'centered',
       docs: {
         source: { language: 'tsx' },
       },
+      controls: { disableSaveFromUI: true, expanded: true },
     })
   })
 

@@ -120,13 +120,20 @@ export function generateCSF(parsed: ParsedResult, options: GenerateCSFOptions = 
   if (parsed.meta.decoratorsRef) {
     lines.push(`  decorators: ${parsed.meta.decoratorsRef},`)
   }
-  // Snippets are Vue templates; the default (jsx) can't highlight `#slot` attributes
-  if (parsed.meta.parametersRef) {
-    const p = parsed.meta.parametersRef
-    lines.push(`  parameters: { ...${p}, docs: { ...${p}?.docs, source: { language: 'html', ...${p}?.docs?.source } } },`)
+  // - Snippets are Vue templates; the default (jsx) can't highlight `#slot` attributes.
+  // - Storybook's "save story" (Controls) rewrites the story file as CSF
+  //   JavaScript, which fails on a .stories.vue file; hide it.
+  // User meta parameters take precedence.
+  const p = parsed.meta.parametersRef
+  if (p) {
+    lines.push(`  parameters: {`)
+    lines.push(`    ...${p},`)
+    lines.push(`    docs: { ...${p}?.docs, source: { language: 'html', ...${p}?.docs?.source } },`)
+    lines.push(`    controls: { disableSaveFromUI: true, ...${p}?.controls },`)
+    lines.push(`  },`)
   }
   else {
-    lines.push(`  parameters: { docs: { source: { language: 'html' } } },`)
+    lines.push(`  parameters: { docs: { source: { language: 'html' } }, controls: { disableSaveFromUI: true } },`)
   }
   if (parsed.meta.tags) {
     lines.push(`  tags: [${parsed.meta.tags.map(t => `'${t}'`).join(', ')}],`)
