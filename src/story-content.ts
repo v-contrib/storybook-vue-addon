@@ -29,6 +29,10 @@ export interface StoryContent {
   template: string
   /** Docs snippet of the template, with placeholders for bound args */
   sourceParts: SourcePart[]
+  /** The story content as written, dedented (`docs.source.originalSource`) */
+  originalSource: string
+  /** Tag of the root element of a simple story, as written */
+  tag?: string
   /**
    * Static attributes of the root element when it is the meta component in a
    * static story. They become the story's args, and the template binds them.
@@ -243,8 +247,20 @@ export function analyzeStoryContent(
     simple,
     template: applyEdits(source, start, end, templateEdits),
     sourceParts: toSourceParts(source, start, end, sourceEdits, indent),
+    originalSource: dedent(indent + source.slice(start, end)),
+    tag: simple ? root!.tag : undefined,
     rootArgs,
   }
+}
+
+/** Remove the common indentation of the non-empty lines, and trim */
+export function dedent(code: string): string {
+  const lines = code.split('\n')
+  const indents = lines.filter(line => line.trim()).map(line => line.match(/^ */)![0].length)
+  const min = indents.length
+    ? Math.min(...indents)
+    : 0
+  return lines.map(line => line.slice(min)).join('\n').trim()
 }
 
 /** By position; an insertion sorts before a removal starting at the same offset */

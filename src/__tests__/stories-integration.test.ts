@@ -105,8 +105,27 @@ describe('.stories.vue with story content (SSR, real @vitejs/plugin-vue)', () =>
 
   it('keeps simple stories on the meta component with Storybook\'s own snippet', async () => {
     expect(mod.Simple.args).toEqual({ title: 'Plain' })
-    expect(mod.Simple.parameters).toBeUndefined()
     expect(text(await renderStory(mod, 'Simple'))).toContain('Plain')
+
+    // Storybook 10 emits its own Vue snippet: left as it is
+    const { originalSource, transform } = mod.Simple.parameters.docs.source
+    const context = {
+      args: { title: 'Changed' },
+      parameters: mod.Simple.parameters,
+    }
+    expect(transform('<template>\n  <Card title="Changed" />\n</template>', context))
+      .toBe('<template>\n  <Card title="Changed" />\n</template>')
+    // Storybook 11 (docgen server) has no snippet and transforms originalSource
+    expect(originalSource).toBe('<Card title="Plain" />')
+    expect(transform(originalSource, context)).toBe('<Card title="Changed" />')
+  })
+
+  it('gives stories with content their template as originalSource', () => {
+    // Storybook 11's Code panel transforms originalSource; without it the panel stays empty
+    const { originalSource } = mod.StaticSlots.parameters.docs.source
+    expect(originalSource.split('\n')[0]).toBe('<Card title="Static title" elevated>')
+    expect(originalSource.split('\n')[1]).toBe('  <template #header>')
+    expect(originalSource.split('\n').at(-1)).toBe('</Card>')
   })
 
   it('docs snippet shows the story template with current args filled in', () => {

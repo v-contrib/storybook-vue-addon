@@ -20,7 +20,7 @@ const STORIES_COMPONENT = '__VueCsfStories'
  * Empty values leave the slot alone; objects are shown as JSON.
  */
 const RENDER_HELPERS = `function __vueCsfSplitArgs(args, context) {
-  const argTypes = context?.argTypes || {}
+  const argTypes = __vueCsfArgTypes(context)
   const props = {}
   const slots = {}
   for (const [name, value] of Object.entries(args || {})) {
@@ -30,6 +30,17 @@ const RENDER_HELPERS = `function __vueCsfSplitArgs(args, context) {
       slots[name] = typeof value === 'function' ? value : () => __vueCsfSlotContent(value)
   }
   return { props, slots }
+}
+
+// Storybook 11 with server-side docgen throws when the context of beforeEach
+// (which emits the Code panel snippet) is asked for argTypes
+function __vueCsfArgTypes(context) {
+  try {
+    return context?.argTypes || {}
+  }
+  catch {
+    return {}
+  }
 }
 
 function __vueCsfSlotContent(value) {
@@ -97,9 +108,6 @@ export function generateCSF(parsed: ParsedResult, options: GenerateCSFOptions = 
   if (parsed.stories.length > 0) {
     lines.push(RENDER_HELPERS)
     lines.push('')
-  }
-
-  if (usesStoriesSfc) {
     lines.push(SOURCE_HELPERS)
     lines.push('')
   }
@@ -229,17 +237,18 @@ function generateStory(story: ParsedStoryResult, componentRef?: string): string 
   }
 
   // Docs snippet. Never a static docs.source.code: Storybook shows that
-  // verbatim and stops following the args. Simple stories use Storybook's own
-  // snippet; stories with content get a transform that fills in the args.
-  if (compiled) {
-    // Slot args are not attributes; leave them out
-    const transform = `transform: (_code, context) => {\n      const args = __vueCsfSplitArgs(context.args, context).props\n      return ${sourceExpression(story.content!.sourceParts)}\n    }`
+  // verbatim and stops following the args. originalSource is the story as
+  // written; a transform fills in the current args (slot args are not
+  // attributes, so they are left out). Storybook 11 with the docgen server
+  // has no snippet of its own for these stories and transforms originalSource.
+  const source = docsSource(story, componentRef, compiled)
+  if (source) {
     if (story.parametersRef) {
       const p = story.parametersRef
-      lines.push(`  parameters: { ...${p}, docs: { ...${p}?.docs, source: { ${transform}, ...${p}?.docs?.source } } },`)
+      lines.push(`  parameters: { ...${p}, docs: { ...${p}?.docs, source: { ${source}, ...${p}?.docs?.source } } },`)
     }
     else {
-      lines.push(`  parameters: { docs: { source: { ${transform} } } },`)
+      lines.push(`  parameters: { docs: { source: { ${source} } } },`)
     }
   }
   else if (story.parametersRef) {
@@ -248,6 +257,25 @@ function generateStory(story: ParsedStoryResult, componentRef?: string): string 
 
   lines.push('}')
   return lines.join('\n')
+}
+
+/**
+ * `docs.source` properties of a story: originalSource and a transform, or
+ * undefined when there is nothing to show.
+ */
+function docsSource(story: ParsedStoryResult, componentRef: string | undefined, compiled: boolean): string | undefined {
+  const content = story.content
+  const props = `const args = __vueCsfSplitArgs(context.args, context).props`
+  if (compiled) {
+    return `originalSource: '${escapeString(content!.originalSource)}',\n    transform: (_code, context) => {\n      ${props}\n      return ${sourceExpression(content!.sourceParts)}\n    }`
+  }
+  const tag = content?.tag ?? componentRef
+  if (!tag)
+    return undefined
+  // Simple story: the meta component with args as attributes. Only replace our
+  // own originalSource; Storybook 10's Vue renderer emits a richer snippet.
+  const original = content?.originalSource ?? `<${tag} />`
+  return `originalSource: '${escapeString(original)}',\n    transform: (code, context) => {\n      if (code !== context.parameters?.docs?.source?.originalSource)\n        return code\n      ${props}\n      return '<${escapeString(tag)}' + __vueCsfAttrs(args) + ' />'\n    }`
 }
 
 /** `args.items[0].name` -> `args?.items?.[0]?.name` */

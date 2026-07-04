@@ -94,7 +94,8 @@ describe('generateCSF stories work with Storybook controls', () => {
       storyParams: { layout: 'centered' },
     })
 
-    expect(Primary.parameters).toEqual({ layout: 'centered' })
+    expect(Primary.parameters.layout).toBe('centered')
+    expect(Primary.parameters.docs.source.originalSource).toBe('<Button />')
   })
 })
 
@@ -321,7 +322,24 @@ const storyParams = { layout: 'centered', docs: { description: { story: 'Hi' } }
     expect(Slots.parameters.docs.source.transform('', {
       args: { title: 'Bye' },
     })).toBe('<Card title="Bye">Body</Card>')
-    expect(Plain.parameters).toBeUndefined()
+    expect(Slots.parameters.docs.source.originalSource).toBe('<Card title="Hi">Body</Card>')
+
+    // Storybook 11 (server-side docgen): the beforeEach context that emits the
+    // Code panel snippet throws on argTypes
+    const beforeEachContext = {
+      args: { title: 'Bye' },
+      parameters: Plain.parameters,
+      get argTypes(): never {
+        throw new Error('ArgTypesRemovedFromStoryContextError')
+      },
+    }
+    expect(Slots.parameters.docs.source.transform('', beforeEachContext)).toBe('<Card title="Bye">Body</Card>')
+    expect(Plain.parameters.docs.source.transform('<Card title="Hi" />', beforeEachContext)).toBe('<Card title="Bye" />')
+    expect(Plain.parameters.docs.source.originalSource).toBe('<Card title="Hi" />')
+    expect(Plain.parameters.docs.source.transform('<Card title="Hi" />', {
+      args: { title: 'Bye', count: 2 },
+      parameters: Plain.parameters,
+    })).toBe('<Card title="Bye" :count="2" />')
   })
 
   it('sets meta parameters for .stories.vue, keeping user meta parameters', () => {
@@ -360,6 +378,5 @@ const storyParams = { layout: 'centered', docs: { description: { story: 'Hi' } }
     const code = generateCSF(parseStoriesVue(source.replace(/<Story name="Slots".*<\/Story>\n/, '')))
 
     expect(code).not.toContain('__VueCsfStories')
-    expect(code).not.toContain('__vueCsfAttrs')
   })
 })
