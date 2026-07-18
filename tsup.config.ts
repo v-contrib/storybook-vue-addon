@@ -5,6 +5,8 @@ export default defineConfig({
     'index': 'src/index.ts',
     'preset': 'src/preset.ts',
     'vite-plugin': 'src/vite-plugin.ts',
+    // Storybook 11 loads it in its docgen worker thread (see preset.ts)
+    'docgen-worker': 'src/docgen-worker.ts',
   },
   format: ['esm'],
   dts: true,

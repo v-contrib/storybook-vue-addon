@@ -97,6 +97,38 @@ describe('generateCSF stories work with Storybook controls', () => {
     expect(Primary.parameters.layout).toBe('centered')
     expect(Primary.parameters.docs.source.originalSource).toBe('<Button />')
   })
+
+  it('on Storybook 11 (server-side docgen) treats args that are not props as slots', () => {
+    const { Primary } = evaluateCSF(generateCSF(parsedWith(staticStory)), { Button })
+    const args = {
+      'label': 'Hi',
+      'header': 'Header',
+      'onClick': () => {},
+      'background-color': 'red',
+    }
+    const render = (): any => Primary.render(args, { argTypes: {}, component: Button })()
+
+    // Storybook 10: docgen argTypes mark slots; without them everything is a prop
+    expect(Object.keys(render().props)).toEqual([
+      'label',
+      'header',
+      'onClick',
+      'background-color',
+    ])
+
+    const features = (globalThis as any).FEATURES
+    ;(globalThis as any).FEATURES = { docgenServer: true }
+    try {
+      const vnode = render()
+      // Like Storybook 11's own Vue render: declared props and on* listeners stay props
+      expect(Object.keys(vnode.props)).toEqual(['label', 'onClick'])
+      // (Vue adds _ctx to normalized slots)
+      expect(Object.keys(vnode.children).filter(key => key !== '_ctx')).toEqual(['header', 'background-color'])
+    }
+    finally {
+      (globalThis as any).FEATURES = features
+    }
+  })
 })
 
 describe('generateCSF', () => {

@@ -7,11 +7,9 @@ import { transformWithOxc } from 'vite'
 import { generateCSF } from './codegen'
 import { parseStoriesVue } from './parse'
 import { buildStoriesSfc, STORIES_SFC_SUFFIX } from './stories-sfc'
+import { STORY_FILE_PATTERN } from './story-file'
 
-/**
- * Story files handled by default: `*.stories.vue` and `*.svue`.
- */
-export const STORY_FILE_PATTERN = /\.(?:stories\.vue|svue)$/
+export { STORY_FILE_PATTERN }
 
 export interface VueStoriesPluginOptions {
   /**

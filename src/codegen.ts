@@ -17,19 +17,36 @@ const STORIES_COMPONENT = '__VueCsfStories'
 /**
  * Splits args into props and slots, like Storybook's own Vue render: args whose
  * argType is in the "slots" category (from docgen) fill the component's slots.
+ * With Storybook 11's server-side docgen the preview has no docgen argTypes;
+ * there, like Storybook, args that are not declared props of the component
+ * (and not on* listeners) are slots.
  * Empty values leave the slot alone; objects are shown as JSON.
  */
 const RENDER_HELPERS = `function __vueCsfSplitArgs(args, context) {
   const argTypes = __vueCsfArgTypes(context)
+  const declared = __vueCsfDeclaredProps(context?.component)
+  const isSlot = name => argTypes[name]?.table?.category === 'slots'
+    || (declared !== undefined && !declared.has(__vueCsfCamelize(name)) && !/^on[A-Z]/.test(name))
   const props = {}
   const slots = {}
   for (const [name, value] of Object.entries(args || {})) {
-    if (argTypes[name]?.table?.category !== 'slots')
+    if (!isSlot(name))
       props[name] = value
     else if (value !== undefined && value !== null && value !== '')
       slots[name] = typeof value === 'function' ? value : () => __vueCsfSlotContent(value)
   }
   return { props, slots }
+}
+
+function __vueCsfDeclaredProps(component) {
+  if (!globalThis.FEATURES?.docgenServer || !component)
+    return undefined
+  const props = component.props
+  return new Set((Array.isArray(props) ? props : Object.keys(props || {})).map(__vueCsfCamelize))
+}
+
+function __vueCsfCamelize(name) {
+  return name.replace(/-([a-z])/g, (_, c) => c.toUpperCase())
 }
 
 // Storybook 11 with server-side docgen throws when the context of beforeEach

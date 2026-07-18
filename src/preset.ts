@@ -1,4 +1,6 @@
 import { readFileSync } from 'node:fs'
+import { fileURLToPath } from 'node:url'
+import { componentImportSource } from './docgen-worker'
 import { parseStoriesVue } from './parse'
 import { STORY_FILE_PATTERN, vueStoriesPlugin } from './vite-plugin'
 
@@ -27,6 +29,8 @@ export async function experimental_indexers(existingIndexers: any[] = []): Promi
       createIndex: async (fileName: string, _options: any) => {
         const code = readFileSync(fileName, 'utf-8')
         const parsed = parseStoriesVue(code)
+        // Storybook 11 records it as the entry's componentPath
+        const rawComponentPath = componentImportSource(parsed)
 
         return parsed.stories.map((story) => {
           // Convert story name to valid identifier for exportName
@@ -44,10 +48,25 @@ export async function experimental_indexers(existingIndexers: any[] = []): Promi
             type: 'story' as const,
             tags: parsed.meta.tags || [],
             importPath: fileName,
+            ...(rawComponentPath && { rawComponentPath }),
           }
         })
       },
     },
     ...existingIndexers,
+  ]
+}
+
+/**
+ * Storybook 11 (server-side docgen): lets the component docs provider see the
+ * meta component of .stories.vue files (see docgen-worker.ts). It must come
+ * after @storybook/vue3's provider so it runs first. Storybook 10 ignores it.
+ */
+export async function experimental_docgenProvider(existing: Array<{ moduleSpecifier: string }> = []): Promise<Array<{ moduleSpecifier: string }>> {
+  return [
+    ...existing,
+    {
+      moduleSpecifier: fileURLToPath(new URL('./docgen-worker.js', import.meta.url)),
+    },
   ]
 }
