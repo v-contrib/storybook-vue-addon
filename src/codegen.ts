@@ -14,6 +14,11 @@ export interface GenerateCSFOptions {
 /** Local name of the imported stories component */
 const STORIES_COMPONENT = '__VueCsfStories'
 
+/** Entry of the router helper (`router` prop on Meta and Story) */
+export const ROUTER_IMPORT = '@v-contrib/storybook-vue-addon/router'
+const WITH_ROUTER = '__vueCsfWithRouter'
+const META_ROUTER = '__vueCsfMetaRouter'
+
 /**
  * Splits args into props and slots, like Storybook's own Vue render: args whose
  * argType is in the "slots" category (from docgen) fill the component's slots.
@@ -109,6 +114,10 @@ export function generateCSF(parsed: ParsedResult, options: GenerateCSFOptions = 
     lines.push(`import ${STORIES_COMPONENT} from '${path}'`)
   }
 
+  const usesRouter = !!parsed.meta.routerRef || parsed.stories.some(story => story.routerRef)
+  if (usesRouter)
+    lines.push(`import { withRouter as ${WITH_ROUTER} } from '${ROUTER_IMPORT}'`)
+
   // Add original imports
   for (const imp of parsed.imports) {
     lines.push(imp.trim())
@@ -119,6 +128,12 @@ export function generateCSF(parsed: ParsedResult, options: GenerateCSFOptions = 
   // Add script setup code (variables, argTypes, etc.)
   if (parsed.scriptSetup.trim()) {
     lines.push(parsed.scriptSetup)
+    lines.push('')
+  }
+
+  // Evaluated once; each story merges its own router options over it
+  if (parsed.meta.routerRef) {
+    lines.push(`const ${META_ROUTER} = ${parsed.meta.routerRef}`)
     lines.push('')
   }
 
@@ -169,7 +184,7 @@ export function generateCSF(parsed: ParsedResult, options: GenerateCSFOptions = 
 
   // Generate story exports
   for (const story of parsed.stories) {
-    lines.push(generateStory(story, parsed.meta.componentRef))
+    lines.push(generateStory(story, parsed.meta.componentRef, !!parsed.meta.routerRef))
     lines.push('')
   }
 
@@ -181,7 +196,7 @@ export function generateCSF(parsed: ParsedResult, options: GenerateCSFOptions = 
   return lines.join('\n')
 }
 
-function generateStory(story: ParsedStoryResult, componentRef?: string): string {
+function generateStory(story: ParsedStoryResult, componentRef?: string, metaRouter = false): string {
   const storyName = toValidIdentifier(story.name)
   const lines: string[] = []
 
@@ -242,9 +257,19 @@ function generateStory(story: ParsedStoryResult, componentRef?: string): string 
     lines.push(`  },`)
   }
 
-  // Optional properties
-  if (story.decoratorsRef) {
-    lines.push(`  decorators: ${story.decoratorsRef},`)
+  // Optional properties. The router decorator (meta and story `router`
+  // merged) comes last, so it wraps the story's own decorators.
+  const router = metaRouter || story.routerRef
+    ? `${WITH_ROUTER}(${[
+      metaRouter ? META_ROUTER : 'undefined',
+      story.routerRef,
+    ].filter(Boolean).join(', ')})`
+    : undefined
+  if (story.decoratorsRef && router) {
+    lines.push(`  decorators: [...${story.decoratorsRef}, ${router}],`)
+  }
+  else if (story.decoratorsRef || router) {
+    lines.push(`  decorators: ${story.decoratorsRef ?? `[${router}]`},`)
   }
   if (story.playRef) {
     lines.push(`  play: ${story.playRef},`)

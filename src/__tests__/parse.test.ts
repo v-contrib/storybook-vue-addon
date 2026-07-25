@@ -160,4 +160,24 @@ async function clickButton({ canvas, userEvent }) {
 
     expect(result.stories[0].playRef).toBe('clickButton')
   })
+
+  it('keeps bound prop expressions as written, also with identifiers', () => {
+    const result = parseStoriesVue(`<script setup>
+import Button from './Button.vue'
+const label = 'Hi'
+const routes = []
+</script>
+<template>
+  <Meta title="T" :component="Button" :args="{ label }" :router="{ routes, initialRoute: '/' }" />
+  <Story name="A" :args="{ label, size: 'small' }" :router="{ initialRoute: (args) => \`/\${args.page}\` }"><Button /></Story>
+  <Story name="B" router><Button /></Story>
+</template>`)
+
+    expect(result.meta.argsRef).toBe('{ label }')
+    expect(result.meta.routerRef).toBe('{ routes, initialRoute: \'/\' }')
+    expect(result.stories[0].argsRef).toBe('{ label, size: \'small\' }')
+    // eslint-disable-next-line no-template-curly-in-string
+    expect(result.stories[0].routerRef).toBe('{ initialRoute: (args) => `/${args.page}` }')
+    expect(result.stories[1].routerRef).toBe('true')
+  })
 })

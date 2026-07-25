@@ -24,6 +24,8 @@ export interface ParsedResult {
     argsRef?: string
     decoratorsRef?: string
     parametersRef?: string
+    /** `router` prop: options for the router helper (`true` for defaults) */
+    routerRef?: string
     tags?: string[]
   }
   stories: ParsedStoryResult[]
@@ -48,6 +50,8 @@ export interface ParsedStoryResult {
   parametersRef?: string
   playRef?: string
   testsRef?: string
+  /** `router` prop: options for the router helper (`true` for defaults) */
+  routerRef?: string
   extendsStory?: string
   /** What is inside the story; absent for stories without content or with `extends` */
   content?: StoryContent
@@ -86,8 +90,11 @@ export function parseStoriesVue(code: string): ParsedResult {
     throw new Error('Failed to parse template AST')
   }
 
-  const meta = extractMeta(templateAst.children)
-  const stories = extractStories(templateAst.children)
+  // Props come from the raw AST: the compiled one turns expressions with
+  // identifiers (e.g. `{ routes, initialRoute: '/' }`) into compound nodes
+  const rawChildren = descriptor.template.ast?.children ?? templateAst.children
+  const meta = extractMeta(rawChildren)
+  const stories = extractStories(rawChildren)
 
   // Story content comes from the raw AST: offsets into the original source,
   // and no compiler transforms applied
@@ -148,6 +155,8 @@ function extractMeta(children: TemplateChildNode[]): ParsedResult['meta'] {
       if (attr.name === 'title' && attr.value) {
         meta.title = attr.value.content
       }
+      if (attr.name === 'router')
+        meta.routerRef = 'true'
     }
     else if (prop.type === 7) {
       // DirectiveNode (v-bind :prop)
@@ -171,6 +180,8 @@ function extractMeta(children: TemplateChildNode[]): ParsedResult['meta'] {
           meta.decoratorsRef = value
         if (argName === 'parameters')
           meta.parametersRef = value
+        if (argName === 'router')
+          meta.routerRef = value || 'true'
         if (argName === 'tags') {
           meta.tags = value
             ? evalSafeArray(value)
@@ -211,6 +222,8 @@ function parseStoryNode(node: ElementNode): ParsedStoryResult {
       if (attr.name === 'extends' && attr.value) {
         story.extendsStory = attr.value.content
       }
+      if (attr.name === 'router')
+        story.routerRef = 'true'
     }
     else if (prop.type === 7) {
       // Directive
@@ -238,6 +251,8 @@ function parseStoryNode(node: ElementNode): ParsedStoryResult {
           story.playRef = value
         if (argName === 'tests')
           story.testsRef = value
+        if (argName === 'router')
+          story.routerRef = value || 'true'
       }
     }
   }

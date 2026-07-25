@@ -412,3 +412,77 @@ const storyParams = { layout: 'centered', docs: { description: { story: 'Hi' } }
     expect(code).not.toContain('__VueCsfStories')
   })
 })
+
+describe('generateCSF router prop', () => {
+  const source = (meta: string, stories: string): string => `<script setup>
+import Card from './Card.vue'
+const routes = [{ path: '/' }]
+const extra = (story) => story
+</script>
+<template>
+  <Meta title="Test/Card" :component="Card"${meta} />
+${stories}
+</template>
+`
+  /** Evaluates the CSF with withRouter replaced by a stub that records its arguments */
+  function routerArgs(code: string): Record<string, any> {
+    const exports = evaluateCSF(code.replace(/^import .*$/gm, ''), {
+      Card: Button,
+      __VueCsfStories: {},
+      __vueCsfWithRouter: (...options: unknown[]) => ({ withRouter: options }),
+    })
+    return Object.fromEntries(Object.entries(exports)
+      .filter(([name]) => name !== 'default')
+      .map(([name, story]) => [name, story.decorators]))
+  }
+
+  it('merges the meta router into every story, story options last', () => {
+    const code = generateCSF(parseStoriesVue(source(
+      ' :router="{ routes, initialRoute: \'/\' }"',
+      `  <Story name="Home"><Card /></Story>
+  <Story name="About" :router="{ initialRoute: '/about' }" :decorators="[extra]"><Card /></Story>`,
+    )))
+
+    expect(code).toContain('import { withRouter as __vueCsfWithRouter } from \'@v-contrib/storybook-vue-addon/router\'')
+    const decorators = routerArgs(code)
+    const meta = {
+      routes: [
+        { path: '/' },
+      ],
+      initialRoute: '/',
+    }
+    expect(decorators.Home).toEqual([
+      {
+        withRouter: [meta],
+      },
+    ])
+    // The router decorator wraps the story's own decorators
+    expect(decorators.About).toHaveLength(2)
+    expect(decorators.About[1]).toEqual({
+      withRouter: [
+        meta,
+        { initialRoute: '/about' },
+      ],
+    })
+  })
+
+  it('supports a router on a story only, and a bare router attribute', () => {
+    const code = generateCSF(parseStoriesVue(source('', `  <Story name="Plain"><Card /></Story>
+  <Story name="Routed" router><Card /></Story>`)))
+
+    const decorators = routerArgs(code)
+    expect(decorators.Plain).toBeUndefined()
+    expect(decorators.Routed).toEqual([
+      {
+        withRouter: [undefined, true],
+      },
+    ])
+  })
+
+  it('does not import the router helper when no story uses it', () => {
+    const code = generateCSF(parseStoriesVue(source('', '  <Story name="Plain"><Card /></Story>')))
+
+    expect(code).not.toContain('storybook-vue-addon/router')
+    expect(code).not.toContain('__vueCsfWithRouter')
+  })
+})
