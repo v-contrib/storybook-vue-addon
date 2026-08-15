@@ -43,6 +43,7 @@ export interface ParsedStoryResult {
   name: string
   args?: Record<string, unknown>
   argsRef?: string
+  argTypesRef?: string
   staticProps: Record<string, unknown>
   hasArgsSlot: boolean
   slotContent: string
@@ -251,6 +252,8 @@ function parseStoryNode(node: ElementNode): ParsedStoryResult {
           story.playRef = value
         if (argName === 'tests')
           story.testsRef = value
+        if (argName === 'arg-types' || argName === 'argTypes')
+          story.argTypesRef = value
         if (argName === 'router')
           story.routerRef = value || 'true'
       }

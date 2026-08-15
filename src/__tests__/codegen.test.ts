@@ -13,7 +13,7 @@ function evaluateCSF(code: string, scope: Record<string, unknown>): Record<strin
     .replace(/^import \{ h \} from 'vue'$/m, '')
     .replace('if (import.meta.hot) {\n  import.meta.hot.accept()\n}', '')
     .replace(/^export default /m, 'exports.default = ')
-    .replace(/^export const (\w+) = /gm, 'exports.$1 = ')
+    .replace(/^export const (\w+) = /gm, 'const $1 = exports.$1 = ')
   const exports: Record<string, any> = {}
   // eslint-disable-next-line no-new-func
   new Function('exports', 'h', ...Object.keys(scope), body)(exports, h, ...Object.values(scope))
@@ -484,5 +484,35 @@ ${stories}
 
     expect(code).not.toContain('storybook-vue-addon/router')
     expect(code).not.toContain('__vueCsfWithRouter')
+  })
+})
+
+describe('generateCSF story argTypes', () => {
+  it('passes arg-types on a Story through, also on extends stories', () => {
+    const code = generateCSF(parseStoriesVue(`<script setup>
+import Card from './Card.vue'
+const pageTypes = { page: { control: 'select', options: ['a', 'b'] } }
+</script>
+<template>
+  <Meta title="T" :component="Card" />
+  <Story name="Base" :arg-types="pageTypes"><Card /></Story>
+  <Story name="More" extends="Base" :arg-types="{ size: { control: 'radio' } }" />
+</template>
+`)).replace(/^import .*$/gm, '')
+    const { Base, More } = evaluateCSF(code, { Card: Button, __VueCsfStories: {} })
+
+    expect(Base.argTypes).toEqual({
+      page: {
+        control: 'select',
+        options: ['a', 'b'],
+      },
+    })
+    expect(More.argTypes).toEqual({
+      page: {
+        control: 'select',
+        options: ['a', 'b'],
+      },
+      size: { control: 'radio' },
+    })
   })
 })

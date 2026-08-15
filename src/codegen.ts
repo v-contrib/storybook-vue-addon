@@ -210,6 +210,9 @@ function generateStory(story: ParsedStoryResult, componentRef?: string, metaRout
       const argsValue = story.argsRef || JSON.stringify(story.args)
       lines.push(`  args: { ...${baseStory}.args, ...${argsValue} },`)
     }
+    if (story.argTypesRef) {
+      lines.push(`  argTypes: { ...${baseStory}.argTypes, ...${story.argTypesRef} },`)
+    }
 
     if (story.decoratorsRef) {
       lines.push(`  decorators: ${story.decoratorsRef},`)
@@ -236,6 +239,9 @@ function generateStory(story: ParsedStoryResult, componentRef?: string, metaRout
     else {
       lines.push(`  args: ${formatObject(args)},`)
     }
+  }
+  if (story.argTypesRef) {
+    lines.push(`  argTypes: ${story.argTypesRef},`)
   }
 
   // Render function. Like Storybook's default Vue render, return a render
