@@ -5,6 +5,7 @@ import { createServer } from 'vite'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { createRenderer, createSSRApp, h, nextTick, reactive } from 'vue'
 import { renderToString } from 'vue/server-renderer'
+import { STORIES_SFC_SUFFIX } from '../stories-sfc'
 import { vueStoriesPlugin } from '../vite-plugin'
 
 const fixtures = fileURLToPath(new URL('./fixtures', import.meta.url))
@@ -50,6 +51,18 @@ describe('.stories.vue with story content (SSR, real @vitejs/plugin-vue)', () =>
     mod = await server.ssrLoadModule('/Card.stories.vue')
   })
   afterAll(() => server.close())
+
+  it('keeps the story file\'s <style> blocks', async () => {
+    const storiesId = `/Card.stories.vue${STORIES_SFC_SUFFIX}`
+    const component = await server.transformRequest(storiesId)
+    const styleImport = component!.code.match(/import ["']([^"']*type=style[^"']*)["']/)?.[1]
+    expect(styleImport).toBeDefined()
+
+    const resolved = await server.pluginContainer.resolveId(styleImport!, `${fixtures}${storiesId}`)
+    expect(resolved!.id).toContain('?vue&type=style')
+    const style = await server.transformRequest(styleImport!)
+    expect(style!.code).toMatch(/\.badge ?\{ ?color: ?red/)
+  })
 
   it('exports every story', () => {
     expect(Object.keys(mod).filter(k => k !== 'default').sort())

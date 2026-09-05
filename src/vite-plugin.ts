@@ -120,18 +120,20 @@ export function vueStoriesPlugin(options: VueStoriesPluginOptions = {}): Plugin 
     },
 
     // `./Foo.stories.vue.__stories__.vue` is virtual: it has no file on disk
+    // Keeps the query: plugin-vue's `?vue&type=style…` sub-requests must reach it
     resolveId(id, importer) {
       if (!storyFileOf(id))
         return null
       const file = cleanPath(id)
+      const query = id.slice(file.length)
       if (importer && file.startsWith('.'))
-        return resolve(dirname(cleanPath(importer)), file)
+        return resolve(dirname(cleanPath(importer)), file) + query
       if (existsSync(storyFileOf(file)!))
-        return file
+        return file + query
       // Root-relative URL requested by the browser in dev
       const fromRoot = join(root, file)
       return existsSync(storyFileOf(fromRoot)!)
-        ? fromRoot
+        ? fromRoot + query
         : null
     },
 
