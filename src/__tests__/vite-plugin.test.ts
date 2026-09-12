@@ -70,9 +70,9 @@ describe('vueStoriesPlugin', () => {
     const result = await transform(vueStoriesPlugin(), STORY, id)
 
     expect(result.code).toMatch(/title: ["']Test\/Button["']/)
-    expect(result.code).toContain('export const Default')
+    expect(result.code).toContain('__vueCsfStory_Default as Default')
     expect(result.code).toContain('export default')
-    expect(result.code).toMatch(/import \{ h \} from ["']vue["']/)
+    expect(result.code).toMatch(/import \{ h as __vueCsfH \} from ["']vue["']/)
   })
 
   it.each(['Button.vue', 'Button.stories.ts', 'Button.story.vue'])('ignores %s', async (id) => {
@@ -82,8 +82,8 @@ describe('vueStoriesPlugin', () => {
   it('handles query strings in file paths', async () => {
     const plugin = vueStoriesPlugin()
 
-    expect((await transform(plugin, STORY, 'Button.svue?import')).code).toContain('export const Default')
-    expect((await transform(plugin, STORY, 'Button.stories.vue?t=123')).code).toContain('export const Default')
+    expect((await transform(plugin, STORY, 'Button.svue?import')).code).toContain('__vueCsfStory_Default as Default')
+    expect((await transform(plugin, STORY, 'Button.stories.vue?t=123')).code).toContain('__vueCsfStory_Default as Default')
   })
 
   it('ignores plugin-vue sub-requests', async () => {
@@ -94,7 +94,7 @@ describe('vueStoriesPlugin', () => {
     const plugin = vueStoriesPlugin({ include: /\.story\.vue$/ })
 
     expect(await transform(plugin, STORY, 'Button.svue')).toBeNull()
-    expect((await transform(plugin, STORY, 'Button.story.vue')).code).toContain('export const Default')
+    expect((await transform(plugin, STORY, 'Button.story.vue')).code).toContain('__vueCsfStory_Default as Default')
   })
 
   it('reports parse errors through this.error', async () => {

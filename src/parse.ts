@@ -1,3 +1,5 @@
+import type { ParserPlugin } from '@babel/parser'
+import type { Statement } from '@babel/types'
 import type {
   AttributeNode,
   DirectiveNode,
@@ -7,7 +9,7 @@ import type {
 } from '@vue/compiler-core'
 import type { SFCBlock } from '@vue/compiler-sfc'
 import type { StoryContent } from './story-content'
-import { compileTemplate, parse as parseSfc } from '@vue/compiler-sfc'
+import { babelParse, compileTemplate, parse as parseSfc } from '@vue/compiler-sfc'
 import { analyzeStoryContent } from './story-content'
 
 /** A raw `<script>`/`<style>` block, as needed to rebuild an SFC */
@@ -74,8 +76,16 @@ export function parseStoriesVue(code: string): ParsedResult {
     throw new Error(`Failed to parse Vue SFC: ${errors[0].message}`)
   }
 
-  const scriptSetup = descriptor.scriptSetup?.content || ''
-  const imports = extractImports(scriptSetup)
+  // The CSF module gets the code of both script blocks, imports hoisted
+  const plain = splitImports(descriptor.script, 'plain <script>')
+  const setup = splitImports(descriptor.scriptSetup, '<script setup>')
+  const imports = [
+    ...new Set([
+      ...plain.imports,
+      ...setup.imports,
+    ]),
+  ]
+  const scriptCode = [plain.code, setup.code].filter(Boolean).join('\n\n')
 
   if (!descriptor.template) {
     throw new Error('Template is required in .stories.vue files')
@@ -113,7 +123,7 @@ export function parseStoriesVue(code: string): ParsedResult {
   return {
     meta,
     stories,
-    scriptSetup: removeImports(scriptSetup),
+    scriptSetup: scriptCode,
     imports,
     blocks: {
       script: toBlock(descriptor.script),
@@ -124,17 +134,53 @@ export function parseStoriesVue(code: string): ParsedResult {
 }
 
 /**
- * An import statement with bindings (default, named, namespace, `import type`),
- * also over several lines. Side-effect imports (`import './x.css'`) stay in the code.
+ * Import declarations of a script block, and its code without them. A plain
+ * `<script>` must not export: its code also goes into the CSF module, where
+ * every export is a story.
  */
-const IMPORT_STATEMENT = /^import\s[^'"]*?from\s*['"][^'"]*['"];?[\t ]*$/gm
+function splitImports(block: SFCBlock | null, label: string): { imports: string[], code: string } {
+  if (!block)
+    return { imports: [], code: '' }
+  const source = block.content
+  const lang = block.lang ?? ''
+  const plugins: ParserPlugin[] = []
+  if (lang === 'ts' || lang === 'tsx')
+    plugins.push('typescript')
+  if (lang === 'jsx' || lang === 'tsx')
+    plugins.push('jsx')
 
-function extractImports(script: string): string[] {
-  return script.match(IMPORT_STATEMENT) || []
-}
+  let body: Statement[]
+  try {
+    body = babelParse(source, {
+      sourceType: 'module',
+      plugins,
+      allowAwaitOutsideFunction: true,
+    }).program.body
+  }
+  catch (error) {
+    const message = error instanceof Error
+      ? error.message
+      : String(error)
+    throw new Error(`Failed to parse ${label}: ${message}`)
+  }
 
-function removeImports(script: string): string {
-  return script.replace(IMPORT_STATEMENT, '').trim()
+  const imports: string[] = []
+  let code = ''
+  let pos = 0
+  for (const node of body) {
+    if (label.startsWith('plain') && node.type.startsWith('Export'))
+      throw new Error(`A plain <script> in a story file cannot export (line ${node.loc!.start.line}): use <script setup>`)
+    if (node.type !== 'ImportDeclaration')
+      continue
+    imports.push(source.slice(node.start!, node.end!))
+    code += source.slice(pos, node.start!)
+    pos = node.end!
+  }
+  code += source.slice(pos)
+  return {
+    imports,
+    code: code.trim(),
+  }
 }
 
 function extractMeta(children: TemplateChildNode[]): ParsedResult['meta'] {

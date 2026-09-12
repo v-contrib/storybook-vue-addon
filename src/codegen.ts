@@ -18,6 +18,15 @@ const STORIES_COMPONENT = '__VueCsfStories'
 export const ROUTER_IMPORT = '@v-contrib/storybook-vue-addon/router'
 const WITH_ROUTER = '__vueCsfWithRouter'
 const META_ROUTER = '__vueCsfMetaRouter'
+const H = '__vueCsfH'
+
+/**
+ * Stories are declared under a local name and exported by their export name,
+ * so a story named like an import (`<Story name="Button">`) does not clash.
+ */
+function storyLocal(exportName: string): string {
+  return `__vueCsfStory_${exportName}`
+}
 
 /**
  * Splits args into props and slots, like Storybook's own Vue render: args whose
@@ -106,8 +115,8 @@ export function generateCSF(parsed: ParsedResult, options: GenerateCSFOptions = 
   const lines: string[] = []
   const usesStoriesSfc = parsed.stories.some(needsStoriesSfc)
 
-  // Add Vue's h import for render functions
-  lines.push('import { h } from \'vue\'')
+  // Vue's h for render functions, under a name the story file can't clash with
+  lines.push(`import { h as ${H} } from 'vue'`)
 
   if (usesStoriesSfc) {
     const path = options.storiesImport ?? `./stories${STORIES_SFC_SUFFIX}`
@@ -187,6 +196,11 @@ export function generateCSF(parsed: ParsedResult, options: GenerateCSFOptions = 
     lines.push(generateStory(story, parsed.meta.componentRef, !!parsed.meta.routerRef))
     lines.push('')
   }
+  if (parsed.stories.length > 0) {
+    const names = parsed.stories.map(story => toValidIdentifier(story.name))
+    lines.push(`export { ${names.map(name => `${storyLocal(name)} as ${name}`).join(', ')} }`)
+    lines.push('')
+  }
 
   // Add HMR support
   lines.push('if (import.meta.hot) {')
@@ -202,8 +216,8 @@ function generateStory(story: ParsedStoryResult, componentRef?: string, metaRout
 
   // Handle story extension
   if (story.extendsStory) {
-    const baseStory = toValidIdentifier(story.extendsStory)
-    lines.push(`export const ${storyName} = {`)
+    const baseStory = storyLocal(toValidIdentifier(story.extendsStory))
+    lines.push(`const ${storyLocal(storyName)} = {`)
     lines.push(`  ...${baseStory},`)
 
     if (story.args || story.argsRef) {
@@ -228,7 +242,7 @@ function generateStory(story: ParsedStoryResult, componentRef?: string, metaRout
     return lines.join('\n')
   }
 
-  lines.push(`export const ${storyName} = {`)
+  lines.push(`const ${storyLocal(storyName)} = {`)
 
   // Args
   const args = story.args || story.staticProps
@@ -252,14 +266,14 @@ function generateStory(story: ParsedStoryResult, componentRef?: string, metaRout
     // Story content is compiled into the stories component; it gets args as a prop
     lines.push(`  render: (args, context) => () => {`)
     lines.push(`    const { props, slots } = __vueCsfSplitArgs(args, context)`)
-    lines.push(`    return h(${STORIES_COMPONENT}, { args: props, ${SLOTS_PROP}: slots, ${STORY_PROP}: '${storyName}' })`)
+    lines.push(`    return ${H}(${STORIES_COMPONENT}, { args: props, ${SLOTS_PROP}: slots, ${STORY_PROP}: '${storyName}' })`)
     lines.push(`  },`)
   }
   else if (story.hasArgsSlot || (story.slotContent && componentRef)) {
     // Only the meta component: static props are already the story's args
     lines.push(`  render: (args, context) => () => {`)
     lines.push(`    const { props, slots } = __vueCsfSplitArgs(args, context)`)
-    lines.push(`    return h(${componentRef || 'Component'}, props, slots)`)
+    lines.push(`    return ${H}(${componentRef || 'Component'}, props, slots)`)
     lines.push(`  },`)
   }
 

@@ -1,7 +1,9 @@
 import type { ParsedResult } from '../parse'
+import { transformWithOxc } from 'vite'
 import { describe, expect, it } from 'vitest'
 import { effect, h, reactive } from 'vue'
 import { generateCSF } from '../codegen'
+import { componentImportSource } from '../docgen-worker'
 import { parseStoriesVue } from '../parse'
 
 /**
@@ -10,13 +12,14 @@ import { parseStoriesVue } from '../parse'
  */
 function evaluateCSF(code: string, scope: Record<string, unknown>): Record<string, any> {
   const body = code
-    .replace(/^import \{ h \} from 'vue'$/m, '')
+    .replace(/^import \{ h as __vueCsfH \} from 'vue'$/m, '')
     .replace('if (import.meta.hot) {\n  import.meta.hot.accept()\n}', '')
     .replace(/^export default /m, 'exports.default = ')
-    .replace(/^export const (\w+) = /gm, 'const $1 = exports.$1 = ')
+    .replace(/^export \{ (.*) \}$/m, (_, list: string) =>
+      `Object.assign(exports, { ${list.replace(/(\w+) as (\w+)/g, '$2: $1')} })`)
   const exports: Record<string, any> = {}
   // eslint-disable-next-line no-new-func
-  new Function('exports', 'h', ...Object.keys(scope), body)(exports, h, ...Object.values(scope))
+  new Function('exports', '__vueCsfH', ...Object.keys(scope), body)(exports, h, ...Object.values(scope))
   return exports
 }
 
@@ -171,7 +174,7 @@ describe('generateCSF', () => {
 
     const result = generateCSF(parsed)
 
-    expect(result).toContain('export const Primary')
+    expect(result).toContain('__vueCsfStory_Primary as Primary')
     expect(result).toContain('label: \'Click me\'')
     expect(result).toContain('primary: true')
     expect(result).toContain('render:')
@@ -198,7 +201,7 @@ describe('generateCSF', () => {
 
     const result = generateCSF(parsed)
 
-    expect(result).toContain('export const Playground')
+    expect(result).toContain('__vueCsfStory_Playground as Playground')
     expect(result).toContain('render: (args, context)')
     expect(result).toContain('label: \'Hello\'')
   })
@@ -220,7 +223,7 @@ describe('generateCSF', () => {
 
     const result = generateCSF(parsed)
 
-    expect(result).toContain('export const WithIcon')
+    expect(result).toContain('__vueCsfStory_WithIcon as WithIcon')
   })
 
   it('includes script setup code in output', () => {
@@ -281,8 +284,8 @@ describe('generateCSF', () => {
 
     const result = generateCSF(parsed)
 
-    expect(result).toContain('export const PrimaryDisabled')
-    expect(result).toContain('...Primary')
+    expect(result).toContain('__vueCsfStory_PrimaryDisabled as PrimaryDisabled')
+    expect(result).toContain('...__vueCsfStory_Primary,')
   })
 
   it('adds HMR support', () => {
@@ -340,8 +343,8 @@ const storyParams = { layout: 'centered', docs: { description: { story: 'Hi' } }
     const code = generateCSF(parseStoriesVue(source), { storiesImport: './Card.stories.vue.__stories__.vue' })
 
     expect(code).toContain('import __VueCsfStories from \'./Card.stories.vue.__stories__.vue\'')
-    expect(code).toContain('return h(__VueCsfStories, { args: props, vueCsfSlots: slots, vueCsfStory: \'Slots\' })')
-    expect(code).toContain('return h(Card, props, slots)')
+    expect(code).toContain('return __vueCsfH(__VueCsfStories, { args: props, vueCsfSlots: slots, vueCsfStory: \'Slots\' })')
+    expect(code).toContain('return __vueCsfH(Card, props, slots)')
   })
 
   it('merges the docs transform into user parameters', () => {
@@ -514,5 +517,111 @@ const pageTypes = { page: { control: 'select', options: ['a', 'b'] } }
       },
       size: { control: 'radio' },
     })
+  })
+})
+
+/** Generated CSF of a story file, checked by a real JS/TS parser (also for redeclarations) */
+async function compileStoryFile(source: string): Promise<string> {
+  const code = generateCSF(parseStoriesVue(source))
+  await transformWithOxc(code, 'story.ts', { lang: 'ts' })
+  return code
+}
+
+describe('generateCSF imports and names', () => {
+  it('compiles when the story file imports h from vue itself', async () => {
+    const code = await compileStoryFile(`<script setup>
+import { h } from 'vue'
+import Card from './Card.vue'
+const icon = () => h('i')
+</script>
+<template>
+  <Meta title="T" :component="Card" />
+  <Story name="A"><Card title="x" /></Story>
+</template>`)
+
+    const { A } = evaluateCSF(code.replace(/^import .*$/gm, ''), { Card: Button, h })
+    expect(A.render({ title: 'x' }, {})().type).toBe(Button)
+  })
+
+  it('compiles a story named like an import, and both stay usable', async () => {
+    const code = await compileStoryFile(`<script setup>
+import Button from './Button.vue'
+</script>
+<template>
+  <Meta title="T" :component="Button" />
+  <Story name="Button"><Button label="x" /></Story>
+  <Story name="More" extends="Button" :args="{ primary: true }" />
+</template>`)
+
+    const exports = evaluateCSF(code.replace(/^import .*$/gm, ''), { Button })
+    expect(exports.default.component).toBe(Button)
+    expect(exports.Button.args).toEqual({ label: 'x' })
+    expect(exports.More.args).toEqual({ label: 'x', primary: true })
+  })
+
+  it('keeps imports and code of a plain <script> block', async () => {
+    const code = await compileStoryFile(`<script>
+import Card from './Card.vue'
+const defaults = { title: 'From script' }
+</script>
+<template>
+  <Meta title="T" :component="Card" :args="defaults" />
+  <Story name="A"><Card /></Story>
+</template>`)
+
+    expect(code).toContain('import Card from \'./Card.vue\'')
+    const exports = evaluateCSF(code.replace(/^import .*$/gm, ''), { Card: Button })
+    expect(exports.default.args).toEqual({ title: 'From script' })
+  })
+
+  it('takes imports from both script blocks once', async () => {
+    const code = await compileStoryFile(`<script>
+import Card from './Card.vue'
+</script>
+<script setup>
+import Card from './Card.vue'
+import { ref } from 'vue'
+</script>
+<template>
+  <Meta title="T" :component="Card" />
+  <Story name="A"><Card /></Story>
+</template>`)
+
+    expect(code.match(/import Card from/g)).toHaveLength(1)
+    expect(code).toContain('import { ref } from \'vue\'')
+  })
+
+  it('reports exports in a plain <script> block', () => {
+    expect(() => parseStoriesVue(`<script>
+export const x = 1
+</script>
+<template><Meta title="T" /></template>`)).toThrow(/export/)
+  })
+
+  it('finds the component import with a trailing comment', () => {
+    const parsed = parseStoriesVue(`<script setup>
+import Card from './Card.vue' // the card
+</script>
+<template><Meta title="T" :component="Card" /></template>`)
+
+    expect(componentImportSource(parsed)).toBe('./Card.vue')
+  })
+
+  it('leaves import lines inside template literals alone', async () => {
+    const source = `<script setup>
+import Card from './Card.vue'
+const snippet = \`
+import Other from './Other.vue'
+\`
+</script>
+<template>
+  <Meta title="T" :component="Card" :args="{ snippet }" />
+  <Story name="A"><Card /></Story>
+</template>`
+    const code = await compileStoryFile(source)
+
+    expect(parseStoriesVue(source).imports).toEqual(['import Card from \'./Card.vue\''])
+    const exports = evaluateCSF(code.replace(/^import (?:Card|\{).*$/gm, ''), { Card: Button })
+    expect(exports.default.args.snippet).toContain('import Other from')
   })
 })
