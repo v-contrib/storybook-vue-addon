@@ -46,7 +46,7 @@ const staticStory = {
 
 const argsStory = {
   name: 'Playground',
-  args: { label: 'Hello' },
+  argsRef: '{ label: \'Hello\' }',
   hasArgsSlot: true,
   staticProps: {},
   slotContent: '<Button v-bind="args" />',
@@ -189,7 +189,7 @@ describe('generateCSF', () => {
       stories: [
         {
           name: 'Playground',
-          args: { label: 'Hello' },
+          argsRef: '{ label: \'Hello\' }',
           hasArgsSlot: true,
           staticProps: {},
           slotContent: '<Button v-bind="args" />',
@@ -264,14 +264,14 @@ describe('generateCSF', () => {
       stories: [
         {
           name: 'Primary',
-          args: { primary: true },
+          argsRef: '{ primary: true }',
           hasArgsSlot: true,
           staticProps: {},
           slotContent: '<Button v-bind="args" />',
         },
         {
           name: 'PrimaryDisabled',
-          args: { disabled: true },
+          argsRef: '{ disabled: true }',
           extendsStory: 'Primary',
           hasArgsSlot: true,
           staticProps: {},
@@ -623,5 +623,54 @@ import Other from './Other.vue'
     expect(parseStoriesVue(source).imports).toEqual(['import Card from \'./Card.vue\''])
     const exports = evaluateCSF(code.replace(/^import (?:Card|\{).*$/gm, ''), { Card: Button })
     expect(exports.default.args.snippet).toContain('import Other from')
+  })
+})
+
+describe('generateCSF args', () => {
+  const file = (stories: string): string => `<script setup>
+import Card from './Card.vue'
+</script>
+<template>
+  <Meta title="T" :component="Card" />
+${stories}
+</template>`
+  const argsOf = (source: string): Record<string, any> => {
+    const code = generateCSF(parseStoriesVue(source)).replace(/^import .*$/gm, '')
+    const exports = evaluateCSF(code, { Card: Button, __VueCsfStories: {} })
+    return Object.fromEntries(Object.entries(exports)
+      .filter(([name]) => name !== 'default')
+      .map(([name, story]) => [name, story.args]))
+  }
+
+  it('does not run :args expressions while parsing', () => {
+    const g = globalThis as Record<string, unknown>
+    delete g.vueCsfArgsRan
+    parseStoriesVue(file('  <Story name="A" :args="{ a: (globalThis.vueCsfArgsRan = true) }"><Card /></Story>'))
+
+    expect(g.vueCsfArgsRan).toBeUndefined()
+  })
+
+  it('keeps static attributes of a component in #default, with :args on top', () => {
+    expect(argsOf(file(`  <Story name="A" :args="{ page: 'intro' }">
+    <template #default>
+      <Card brand="Acme docs" />
+    </template>
+  </Story>
+  <Story name="B" :args="{ label: 'from args' }">
+    <template #default="{ args }">
+      <Card v-bind="args" size="small" label="static" />
+    </template>
+  </Story>`))).toEqual({
+      A: { brand: 'Acme docs', page: 'intro' },
+      B: { size: 'small', label: 'from args' },
+    })
+  })
+
+  it('merges :args over the attributes of a static story', () => {
+    expect(argsOf(file(`  <Story name="Simple" :args="{ primary: true }"><Card label="Hi" /></Story>
+  <Story name="Slotted" :args="{ label: 'Args' }"><Card label="Hi" size="small">Body</Card></Story>`))).toEqual({
+      Simple: { label: 'Hi', primary: true },
+      Slotted: { label: 'Args', size: 'small' },
+    })
   })
 })

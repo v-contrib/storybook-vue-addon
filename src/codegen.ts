@@ -220,9 +220,8 @@ function generateStory(story: ParsedStoryResult, componentRef?: string, metaRout
     lines.push(`const ${storyLocal(storyName)} = {`)
     lines.push(`  ...${baseStory},`)
 
-    if (story.args || story.argsRef) {
-      const argsValue = story.argsRef || JSON.stringify(story.args)
-      lines.push(`  args: { ...${baseStory}.args, ...${argsValue} },`)
+    if (story.argsRef) {
+      lines.push(`  args: { ...${baseStory}.args, ...${story.argsRef} },`)
     }
     if (story.argTypesRef) {
       lines.push(`  argTypes: { ...${baseStory}.argTypes, ...${story.argTypesRef} },`)
@@ -244,16 +243,14 @@ function generateStory(story: ParsedStoryResult, componentRef?: string, metaRout
 
   lines.push(`const ${storyLocal(storyName)} = {`)
 
-  // Args
-  const args = story.args || story.staticProps
-  if (Object.keys(args).length > 0 || story.argsRef) {
-    if (story.argsRef) {
-      lines.push(`  args: ${story.argsRef},`)
-    }
-    else {
-      lines.push(`  args: ${formatObject(args)},`)
-    }
-  }
+  // Args: the root component's attributes, with `:args` on top
+  const hasStatic = Object.keys(story.staticProps).length > 0
+  if (hasStatic && story.argsRef)
+    lines.push(`  args: { ...${formatObject(story.staticProps)}, ...${story.argsRef} },`)
+  else if (story.argsRef)
+    lines.push(`  args: ${story.argsRef},`)
+  else if (hasStatic)
+    lines.push(`  args: ${formatObject(story.staticProps)},`)
   if (story.argTypesRef) {
     lines.push(`  argTypes: ${story.argTypesRef},`)
   }

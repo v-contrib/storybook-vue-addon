@@ -59,7 +59,7 @@ import Button from './Button.vue'
     const result = parseStoriesVue(code)
 
     expect(result.stories[0].hasArgsSlot).toBe(true)
-    expect(result.stories[0].args).toEqual({ label: 'Hello' })
+    expect(result.stories[0].argsRef).toBe('{ label: \'Hello\' }')
   })
 
   it('extracts imports from script setup', () => {

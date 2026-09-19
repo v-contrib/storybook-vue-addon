@@ -43,7 +43,6 @@ export interface ParsedResult {
 
 export interface ParsedStoryResult {
   name: string
-  args?: Record<string, unknown>
   argsRef?: string
   argTypesRef?: string
   staticProps: Record<string, unknown>
@@ -116,7 +115,7 @@ export function parseStoriesVue(code: string): ParsedResult {
     if (story.extendsStory || !rawStories[i])
       return
     story.content = analyzeStoryContent(rawStories[i], descriptor.source, meta.componentRef)
-    if (story.content && !story.content.simple)
+    if (story.content)
       story.staticProps = story.content.rootArgs ?? {}
   })
 
@@ -284,12 +283,8 @@ function parseStoryNode(node: ElementNode): ParsedStoryResult {
         // Strip _ctx. prefix that Vue compiler adds
         const value = rawValue?.replace(/^_ctx\./, '')
 
-        if (argName === 'args') {
+        if (argName === 'args')
           story.argsRef = value
-          story.args = value
-            ? evalSafeObject(value)
-            : undefined
-        }
         if (argName === 'decorators')
           story.decoratorsRef = value
         if (argName === 'parameters')
@@ -430,21 +425,6 @@ function evalSafeArray(str: string): string[] | undefined {
     if (str.startsWith('[') && str.endsWith(']')) {
       const inner = str.slice(1, -1)
       return inner.split(',').map(s => s.trim().replace(/['"]/g, ''))
-    }
-  }
-  catch {
-    return undefined
-  }
-  return undefined
-}
-
-function evalSafeObject(str: string): Record<string, unknown> | undefined {
-  try {
-    // Simple object parsing for { key: value } syntax
-    if (str.startsWith('{') && str.endsWith('}')) {
-      // eslint-disable-next-line no-new-func
-      const fn = new Function(`return ${str}`)
-      return fn()
     }
   }
   catch {

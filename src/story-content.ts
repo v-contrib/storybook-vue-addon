@@ -35,7 +35,8 @@ export interface StoryContent {
   tag?: string
   /**
    * Static attributes of the root element when it is the meta component in a
-   * static story. They become the story's args, and the template binds them.
+   * static or simple story. They become the story's args (`:args` on top); in
+   * a static story the template binds them.
    */
   rootArgs?: Record<string, unknown>
 }
@@ -181,6 +182,14 @@ export function analyzeStoryContent(
       text: '',
       part: { kind: 'attrs' },
     })
+  }
+  // A simple story renders the component from args: its attributes are args
+  else if (simple) {
+    rootArgs = {}
+    for (const prop of root!.props) {
+      if (prop.type === PROP_ATTRIBUTE)
+        rootArgs[prop.name] = prop.value ? prop.value.content : true
+    }
   }
 
   // The meta component at the root renders through the wrapper (template only;
