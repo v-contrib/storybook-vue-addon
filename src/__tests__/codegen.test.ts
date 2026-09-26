@@ -149,7 +149,7 @@ describe('generateCSF', () => {
     const result = generateCSF(parsed)
 
     expect(result).toContain('import Button from \'./Button.vue\'')
-    expect(result).toContain('title: \'Example/Button\'')
+    expect(result).toContain('title: "Example/Button"')
     expect(result).toContain('component: Button')
     expect(result).toContain('export default')
   })
@@ -672,5 +672,63 @@ ${stories}
       Simple: { label: 'Hi', primary: true },
       Slotted: { label: 'Args', size: 'small' },
     })
+  })
+})
+
+describe('generateCSF escaping and names', () => {
+  const file = (meta: string, stories: string): string => `<script setup>
+import Card from './Card.vue'
+</script>
+<template>
+  <Meta ${meta} :component="Card" />
+${stories}
+</template>`
+  const load = async (source: string): Promise<Record<string, any>> => {
+    const code = await compileStoryFile(source)
+    return evaluateCSF(code.replace(/^import .*$/gm, ''), { Card: Button, __VueCsfStories: {} })
+  }
+
+  it('compiles files with CRLF line endings', async () => {
+    const source = file('title="T"', `  <Story name="A">
+    <Card label="x">
+      Body
+    </Card>
+  </Story>`).replace(/\n/g, '\r\n')
+    const { A } = await load(source)
+
+    expect(A.parameters.docs.source.originalSource).toBe('<Card label="x">\n  Body\n</Card>')
+  })
+
+  it('escapes quotes in title and tags', async () => {
+    const meta = await load(file('title="Bob\'s \\ stories" :tags="[\'dev\', &quot;it\'s&quot;]"', '  <Story name="A"><Card /></Story>'))
+
+    expect(meta.default.title).toBe('Bob\'s \\ stories')
+    expect(meta.default.tags).toEqual(['dev', 'it\'s'])
+  })
+
+  it('reads an empty tags array as no tags, and reports tags it cannot read', async () => {
+    expect((await load(file('title="T" :tags="[]"', ''))).default.tags).toEqual([])
+    expect(() => parseStoriesVue(file('title="T" :tags="[myTag]"', ''))).toThrow(/tags/)
+  })
+
+  it('leaves out a missing title, so Storybook titles the file from its path', async () => {
+    const { default: meta } = await load(file('', '  <Story name="A"><Card /></Story>'))
+
+    expect(meta).not.toHaveProperty('title')
+  })
+
+  it('exports a story whose name starts with a digit', async () => {
+    const exports = await load(file('title="T"', '  <Story name="1st try"><Card /></Story>'))
+
+    expect(exports._1stTry).toBeDefined()
+  })
+
+  it.each([
+    ['without a name', '<Story><Card /></Story>', /name/],
+    ['with a name without letters or digits', '<Story name="日本"><Card /></Story>', /日本/],
+    ['with the same export name as another', '<Story name="With Icon"><Card /></Story><Story name="with-icon"><Card /></Story>', /WithIcon/],
+    ['extending an unknown story', '<Story name="A" extends="Nope" />', /Nope/],
+  ])('reports a story %s', (_case, stories, message) => {
+    expect(() => parseStoriesVue(file('title="T"', stories))).toThrow(message)
   })
 })

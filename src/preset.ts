@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { componentImportSource } from './docgen-worker'
+import { toValidIdentifier } from './identifier'
 import { parseStoriesVue } from './parse'
 import { STORY_FILE_PATTERN, vueStoriesPlugin } from './vite-plugin'
 
@@ -33,17 +34,12 @@ export async function experimental_indexers(existingIndexers: any[] = []): Promi
         const rawComponentPath = componentImportSource(parsed)
 
         return parsed.stories.map((story) => {
-          // Convert story name to valid identifier for exportName
-          const exportName = story.name
-            .replace(/[^a-z0-9]/gi, ' ')
-            .split(' ')
-            .filter(Boolean)
-            .map(word => word.charAt(0).toUpperCase() + word.slice(1))
-            .join('')
+          const exportName = toValidIdentifier(story.name)
 
           return {
             exportName,
             name: story.name,
+            // Without a title, Storybook titles the file from its path
             title: parsed.meta.title,
             type: 'story' as const,
             tags: parsed.meta.tags || [],

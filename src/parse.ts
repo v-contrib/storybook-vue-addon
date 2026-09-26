@@ -1,5 +1,5 @@
 import type { ParserPlugin } from '@babel/parser'
-import type { Statement } from '@babel/types'
+import type { Node, Statement, StringLiteral } from '@babel/types'
 import type {
   AttributeNode,
   DirectiveNode,
@@ -10,6 +10,7 @@ import type {
 import type { SFCBlock } from '@vue/compiler-sfc'
 import type { StoryContent } from './story-content'
 import { babelParse, compileTemplate, parse as parseSfc } from '@vue/compiler-sfc'
+import { toValidIdentifier } from './identifier'
 import { analyzeStoryContent } from './story-content'
 
 /** A raw `<script>`/`<style>` block, as needed to rebuild an SFC */
@@ -20,7 +21,8 @@ export interface SfcBlock {
 
 export interface ParsedResult {
   meta: {
-    title: string
+    /** Absent: Storybook titles the file from its path */
+    title?: string
     componentRef?: string
     argTypesRef?: string
     argsRef?: string
@@ -69,7 +71,8 @@ function toBlock(block: SFCBlock | null): SfcBlock | undefined {
 }
 
 export function parseStoriesVue(code: string): ParsedResult {
-  const { descriptor, errors } = parseSfc(code)
+  // CRLF: offsets, snippets and generated strings all assume \n
+  const { descriptor, errors } = parseSfc(code.replace(/\r\n?/g, '\n'))
 
   if (errors.length > 0) {
     throw new Error(`Failed to parse Vue SFC: ${errors[0].message}`)
@@ -105,6 +108,7 @@ export function parseStoriesVue(code: string): ParsedResult {
   const rawChildren = descriptor.template.ast?.children ?? templateAst.children
   const meta = extractMeta(rawChildren)
   const stories = extractStories(rawChildren)
+  checkStoryNames(stories)
 
   // Story content comes from the raw AST: offsets into the original source,
   // and no compiler transforms applied
@@ -192,7 +196,7 @@ function extractMeta(children: TemplateChildNode[]): ParsedResult['meta'] {
     throw new Error('<Meta> component is required')
   }
 
-  const meta: ParsedResult['meta'] = { title: '' }
+  const meta: ParsedResult['meta'] = {}
 
   for (const prop of metaNode.props) {
     if (prop.type === 6) {
@@ -228,11 +232,8 @@ function extractMeta(children: TemplateChildNode[]): ParsedResult['meta'] {
           meta.parametersRef = value
         if (argName === 'router')
           meta.routerRef = value || 'true'
-        if (argName === 'tags') {
-          meta.tags = value
-            ? evalSafeArray(value)
-            : undefined
-        }
+        if (argName === 'tags' && value)
+          meta.tags = parseTags(value)
       }
     }
   }
@@ -419,16 +420,39 @@ function extractStaticPropsFromContent(
   return props
 }
 
-function evalSafeArray(str: string): string[] | undefined {
+/**
+ * `:tags` must be an array of string literals: the indexer needs the tags
+ * without running the story file.
+ */
+function parseTags(value: string): string[] {
+  let elements: Node[] | undefined
   try {
-    // Only parse simple string arrays
-    if (str.startsWith('[') && str.endsWith(']')) {
-      const inner = str.slice(1, -1)
-      return inner.split(',').map(s => s.trim().replace(/['"]/g, ''))
-    }
+    const statement = babelParse(`(${value})`).program.body[0]
+    if (statement?.type === 'ExpressionStatement' && statement.expression.type === 'ArrayExpression')
+      elements = statement.expression.elements as Node[]
   }
-  catch {
-    return undefined
+  catch {}
+  if (!elements || !elements.every(element => element?.type === 'StringLiteral'))
+    throw new Error(`<Meta :tags="${value}">: tags must be an array of strings, like :tags="['autodocs']"`)
+  return elements.map(element => (element as StringLiteral).value)
+}
+
+/** Every story needs a name that gives a unique export name */
+function checkStoryNames(stories: ParsedStoryResult[]): void {
+  const seen = new Map<string, string>()
+  for (const story of stories) {
+    if (!story.name)
+      throw new Error('Every <Story> needs a name')
+    const exportName = toValidIdentifier(story.name)
+    if (!exportName)
+      throw new Error(`<Story name="${story.name}">: the name needs ASCII letters or digits for its export name`)
+    const other = seen.get(exportName)
+    if (other !== undefined)
+      throw new Error(`<Story name="${story.name}"> and <Story name="${other}"> both export as ${exportName}`)
+    seen.set(exportName, story.name)
   }
-  return undefined
+  for (const story of stories) {
+    if (story.extendsStory && !seen.has(toValidIdentifier(story.extendsStory)))
+      throw new Error(`<Story name="${story.name}"> extends "${story.extendsStory}", which is not a story in this file`)
+  }
 }

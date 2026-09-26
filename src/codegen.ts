@@ -155,7 +155,8 @@ export function generateCSF(parsed: ParsedResult, options: GenerateCSFOptions = 
 
   // Generate default export (meta)
   lines.push('export default {')
-  lines.push(`  title: '${parsed.meta.title}',`)
+  if (parsed.meta.title)
+    lines.push(`  title: ${JSON.stringify(parsed.meta.title)},`)
 
   if (parsed.meta.componentRef) {
     lines.push(`  component: ${parsed.meta.componentRef},`)
@@ -185,7 +186,7 @@ export function generateCSF(parsed: ParsedResult, options: GenerateCSFOptions = 
     lines.push(`  parameters: { docs: { source: { language: 'html' } }, controls: { disableSaveFromUI: true } },`)
   }
   if (parsed.meta.tags) {
-    lines.push(`  tags: [${parsed.meta.tags.map(t => `'${t}'`).join(', ')}],`)
+    lines.push(`  tags: ${JSON.stringify(parsed.meta.tags)},`)
   }
 
   lines.push('}')
@@ -374,7 +375,13 @@ function formatKey(key: string): string {
 }
 
 function escapeString(value: string): string {
-  return value.replace(/\\/g, '\\\\').replace(/'/g, '\\\'').replace(/\n/g, '\\n')
+  return value
+    .replace(/\\/g, '\\\\')
+    .replace(/'/g, '\\\'')
+    .replace(/\n/g, '\\n')
+    .replace(/\r/g, '\\r')
+    .replace(/\u2028/g, '\\u2028')
+    .replace(/\u2029/g, '\\u2029')
 }
 
 function formatObject(obj: Record<string, unknown>): string {
