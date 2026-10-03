@@ -193,8 +193,13 @@ export function generateCSF(parsed: ParsedResult, options: GenerateCSFOptions = 
   lines.push('')
 
   // Generate story exports
+  const byName = new Map(parsed.stories.map(story => [
+    toValidIdentifier(story.name),
+    story,
+  ]))
   for (const story of parsed.stories) {
-    lines.push(generateStory(story, parsed.meta.componentRef, !!parsed.meta.routerRef))
+    const decorators = decoratorsOf(story, byName, !!parsed.meta.routerRef)
+    lines.push(generateStory(story, parsed.meta.componentRef, decorators))
     lines.push('')
   }
   if (parsed.stories.length > 0) {
@@ -211,7 +216,46 @@ export function generateCSF(parsed: ParsedResult, options: GenerateCSFOptions = 
   return lines.join('\n')
 }
 
-function generateStory(story: ParsedStoryResult, componentRef?: string, metaRouter = false): string {
+/**
+ * Decorators and router options of a story, following `extends`: its own
+ * decorators replace the base story's, router options add to them.
+ */
+function inherited(story: ParsedStoryResult, byName: Map<string, ParsedStoryResult>): { decoratorsRef?: string, routerRefs: string[] } {
+  const base = story.extendsStory
+    ? inherited(byName.get(toValidIdentifier(story.extendsStory))!, byName)
+    : { routerRefs: [] }
+  return {
+    decoratorsRef: story.decoratorsRef ?? base.decoratorsRef,
+    routerRefs: story.routerRef
+      ? [...base.routerRefs, story.routerRef]
+      : base.routerRefs,
+  }
+}
+
+/**
+ * The `decorators` value of a story, or undefined when it has none of its
+ * own (an extends story then keeps its base story's). The router decorator
+ * (meta, base and story `router` merged) comes last, so it wraps the
+ * story's own decorators.
+ */
+function decoratorsOf(story: ParsedStoryResult, byName: Map<string, ParsedStoryResult>, metaRouter: boolean): string | undefined {
+  if (story.extendsStory && !story.decoratorsRef && !story.routerRef)
+    return undefined
+  const { decoratorsRef, routerRefs } = inherited(story, byName)
+  const router = metaRouter || routerRefs.length > 0
+    ? `${WITH_ROUTER}(${[
+      metaRouter
+        ? META_ROUTER
+        : 'undefined',
+      ...routerRefs,
+    ].join(', ')})`
+    : undefined
+  if (decoratorsRef && router)
+    return `[...${decoratorsRef}, ${router}]`
+  return decoratorsRef ?? (router && `[${router}]`)
+}
+
+function generateStory(story: ParsedStoryResult, componentRef: string | undefined, decorators: string | undefined): string {
   const storyName = toValidIdentifier(story.name)
   const lines: string[] = []
 
@@ -228,14 +272,17 @@ function generateStory(story: ParsedStoryResult, componentRef?: string, metaRout
       lines.push(`  argTypes: { ...${baseStory}.argTypes, ...${story.argTypesRef} },`)
     }
 
-    if (story.decoratorsRef) {
-      lines.push(`  decorators: ${story.decoratorsRef},`)
+    if (decorators) {
+      lines.push(`  decorators: ${decorators},`)
     }
     if (story.parametersRef) {
       lines.push(`  parameters: ${story.parametersRef},`)
     }
     if (story.playRef) {
       lines.push(`  play: ${story.playRef},`)
+    }
+    if (story.testsRef) {
+      lines.push(`  tests: ${story.testsRef},`)
     }
 
     lines.push('}')
@@ -275,19 +322,8 @@ function generateStory(story: ParsedStoryResult, componentRef?: string, metaRout
     lines.push(`  },`)
   }
 
-  // Optional properties. The router decorator (meta and story `router`
-  // merged) comes last, so it wraps the story's own decorators.
-  const router = metaRouter || story.routerRef
-    ? `${WITH_ROUTER}(${[
-      metaRouter ? META_ROUTER : 'undefined',
-      story.routerRef,
-    ].filter(Boolean).join(', ')})`
-    : undefined
-  if (story.decoratorsRef && router) {
-    lines.push(`  decorators: [...${story.decoratorsRef}, ${router}],`)
-  }
-  else if (story.decoratorsRef || router) {
-    lines.push(`  decorators: ${story.decoratorsRef ?? `[${router}]`},`)
+  if (decorators) {
+    lines.push(`  decorators: ${decorators},`)
   }
   if (story.playRef) {
     lines.push(`  play: ${story.playRef},`)

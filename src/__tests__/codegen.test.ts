@@ -482,11 +482,110 @@ ${stories}
     ])
   })
 
+  it('keeps the router on extends stories: meta, base and own options, around their decorators', () => {
+    const code = generateCSF(parseStoriesVue(source(
+      ' :router="{ routes }"',
+      `  <Story name="Base" :router="{ initialRoute: '/a' }" :decorators="[extra]"><Card /></Story>
+  <Story name="Same" extends="Base" />
+  <Story name="Decorated" extends="Base" :decorators="[extra, extra]" />
+  <Story name="Moved" extends="Base" :router="{ initialRoute: '/b' }" />
+  <Story name="Deeper" extends="Moved" router />`,
+    )))
+    const decorators = routerArgs(code)
+    const meta = {
+      routes: [
+        { path: '/' },
+      ],
+    }
+    const extra = decorators.Base[0]
+
+    expect(decorators.Base).toEqual([
+      extra,
+      {
+        withRouter: [
+          meta,
+          { initialRoute: '/a' },
+        ],
+      },
+    ])
+    expect(decorators.Same).toEqual(decorators.Base)
+    expect(decorators.Decorated).toEqual([
+      extra,
+      extra,
+      {
+        withRouter: [
+          meta,
+          { initialRoute: '/a' },
+        ],
+      },
+    ])
+    expect(decorators.Moved).toEqual([
+      extra,
+      {
+        withRouter: [
+          meta,
+          { initialRoute: '/a' },
+          { initialRoute: '/b' },
+        ],
+      },
+    ])
+    expect(decorators.Deeper).toEqual([
+      extra,
+      {
+        withRouter: [
+          meta,
+          { initialRoute: '/a' },
+          { initialRoute: '/b' },
+          true,
+        ],
+      },
+    ])
+  })
+
+  it('gives an extends story its own router and decorators without a meta router', () => {
+    const code = generateCSF(parseStoriesVue(source('', `  <Story name="Base"><Card /></Story>
+  <Story name="Routed" extends="Base" router :decorators="[extra]" />`)))
+    const decorators = routerArgs(code)
+
+    expect(decorators.Base).toBeUndefined()
+    expect(decorators.Routed).toEqual([
+      expect.any(Function),
+      {
+        withRouter: [undefined, true],
+      },
+    ])
+  })
+
   it('does not import the router helper when no story uses it', () => {
     const code = generateCSF(parseStoriesVue(source('', '  <Story name="Plain"><Card /></Story>')))
 
     expect(code).not.toContain('storybook-vue-addon/router')
     expect(code).not.toContain('__vueCsfWithRouter')
+  })
+})
+
+describe('generateCSF extends', () => {
+  it('passes :tests on an extends story through', () => {
+    const code = generateCSF(parseStoriesVue(`<script setup>
+import Card from './Card.vue'
+const checks = [() => {}]
+</script>
+<template>
+  <Meta title="T" :component="Card" />
+  <Story name="Base"><Card /></Story>
+  <Story name="Checked" extends="Base" :tests="checks" />
+</template>`)).replace(/^import .*$/gm, '')
+    const { Checked } = evaluateCSF(code, { Card: Button })
+
+    expect(Checked.tests).toHaveLength(1)
+  })
+
+  it('reports extends of a story further down', () => {
+    expect(() => parseStoriesVue(`<template>
+  <Meta title="T" />
+  <Story name="Early" extends="Late" />
+  <Story name="Late"><div /></Story>
+</template>`)).toThrow(/Late/)
   })
 })
 

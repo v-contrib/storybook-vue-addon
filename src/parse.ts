@@ -449,10 +449,9 @@ function checkStoryNames(stories: ParsedStoryResult[]): void {
     const other = seen.get(exportName)
     if (other !== undefined)
       throw new Error(`<Story name="${story.name}"> and <Story name="${other}"> both export as ${exportName}`)
-    seen.set(exportName, story.name)
-  }
-  for (const story of stories) {
+    // The base story must come first: the extends story spreads it
     if (story.extendsStory && !seen.has(toValidIdentifier(story.extendsStory)))
-      throw new Error(`<Story name="${story.name}"> extends "${story.extendsStory}", which is not a story in this file`)
+      throw new Error(`<Story name="${story.name}"> extends "${story.extendsStory}", which is not a story above it in this file`)
+    seen.set(exportName, story.name)
   }
 }
