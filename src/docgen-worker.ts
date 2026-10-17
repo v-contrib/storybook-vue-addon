@@ -9,8 +9,9 @@
  *
  * This provider runs before it. For a .stories.vue entry it writes a small CSF
  * shim with the story file's imports and `export default { component }`, and
- * hands the entry on with the shim as its story file. Storybook 10 never loads
- * this module.
+ * hands the entry on with the shim as its story file. Storybook loads this
+ * module only with server-side docgen: Storybook 11, or Storybook 10.6+ with
+ * `features.experimentalDocgenServer`.
  */
 import type { ParsedResult } from './parse'
 import { createHash } from 'node:crypto'
@@ -74,26 +75,32 @@ export function componentImportSource(parsed: ParsedResult): string | undefined 
   return undefined
 }
 
-/** `./Card.vue` -> `/abs/dir/Card.vue`; bare and aliased specifiers stay as they are */
-function absoluteImport(statement: string, storyDir: string): string {
+/**
+ * `./Card.vue` from the story file -> `../../src/Card.vue` from the shim, as
+ * in any CSF file; bare and aliased specifiers stay as they are
+ */
+function rebaseImport(statement: string, storyDir: string, shimDir: string): string {
   return statement.replace(/(from\s+)(['"])(\.{1,2}\/[^'"]*)\2/, (_m, from: string, quote: string, path: string) =>
-    `${from}${quote}${resolve(storyDir, path).replace(/\\/g, '/')}${quote}`)
+    `${from}${quote}${toImportPath(resolve(storyDir, path), shimDir)}${quote}`)
 }
 
 /**
  * CSF source with the imports of a .stories.vue file and its meta component,
  * or undefined when the file has no meta component.
  */
-export function buildDocgenShim(source: string, storyPath: string): string | undefined {
+export function buildDocgenShim(source: string, storyPath: string, shimDir: string): string | undefined {
   const parsed = parseStoriesVue(source)
   const component = parsed.meta.componentRef
   if (!component)
     return undefined
   const storyDir = dirname(storyPath)
+  const title = parsed.meta.title
+    ? `title: ${JSON.stringify(parsed.meta.title)}, `
+    : ''
   return [
-    ...parsed.imports.map(statement => absoluteImport(statement.trim(), storyDir)),
+    ...parsed.imports.map(statement => rebaseImport(statement.trim(), storyDir, shimDir)),
     '',
-    `export default { title: ${JSON.stringify(parsed.meta.title)}, component: ${component} }`,
+    `export default { ${title}component: ${component} }`,
     '',
   ].join('\n')
 }
@@ -112,7 +119,7 @@ export function createDocgenProvider(options: DocgenProviderOptions = {}) {
   /** Writes the shim for a story file; returns its import path, or undefined */
   const writeShim = (importPath: string): string | undefined => {
     const storyPath = resolve(cwd, importPath)
-    const shim = buildDocgenShim(readFileSync(storyPath, 'utf-8'), storyPath)
+    const shim = buildDocgenShim(readFileSync(storyPath, 'utf-8'), storyPath, cacheDir)
     if (!shim)
       return undefined
     // The name must look like a CSF story file for @storybook/vue3's provider

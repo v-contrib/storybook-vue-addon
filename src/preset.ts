@@ -56,7 +56,9 @@ export async function experimental_indexers(existingIndexers: any[] = []): Promi
 /**
  * Storybook 11 (server-side docgen): lets the component docs provider see the
  * meta component of .stories.vue files (see docgen-worker.ts). It must come
- * after @storybook/vue3's provider so it runs first. Storybook 10 ignores it.
+ * after @storybook/vue3's provider so it runs first. Storybook only uses it
+ * with server-side docgen (always in 11; opt-in in 10.6+ with
+ * `features.experimentalDocgenServer`).
  */
 export async function experimental_docgenProvider(existing: Array<{ moduleSpecifier: string }> = []): Promise<Array<{ moduleSpecifier: string }>> {
   return [

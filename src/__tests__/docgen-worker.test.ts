@@ -31,24 +31,29 @@ describe('componentImportSource', () => {
 })
 
 describe('buildDocgenShim', () => {
-  it('is CSF with the story file imports (relative ones made absolute) and the meta component', () => {
-    expect(buildDocgenShim(cardStories, cardStoriesPath)).toBe([
-      `import Badge from '${resolve(fixtures, 'Badge.vue')}'`,
-      `import Card from '${resolve(fixtures, 'Card.vue')}'`,
+  it('is CSF with the story file imports (relative to the shim) and the meta component', () => {
+    expect(buildDocgenShim(cardStories, cardStoriesPath, join(fixtures, 'cache', 'docgen'))).toBe([
+      'import Badge from \'../../Badge.vue\'',
+      'import Card from \'../../Card.vue\'',
       '',
       'export default { title: "Fixtures/Card", component: Card }',
       '',
     ].join('\n'))
   })
 
+  it('leaves out a missing title', () => {
+    const source = '<script setup>\nimport Card from \'./Card.vue\'\n</script>\n<template>\n  <Meta :component="Card" />\n</template>\n'
+    expect(buildDocgenShim(source, '/project/A.stories.vue', '/project/cache')).toContain('export default { component: Card }')
+  })
+
   it('keeps bare and aliased imports', () => {
-    const shim = buildDocgenShim(stories('import { Card } from \'@/components\''), '/project/src/A.stories.vue')
+    const shim = buildDocgenShim(stories('import { Card } from \'@/components\''), '/project/src/A.stories.vue', '/project/cache')
     expect(shim).toContain('import { Card } from \'@/components\'')
   })
 
   it('is undefined without a meta component', () => {
     const source = '<template>\n  <Meta title="T" />\n  <Story name="A"><p /></Story>\n</template>\n'
-    expect(buildDocgenShim(source, '/project/A.stories.vue')).toBeUndefined()
+    expect(buildDocgenShim(source, '/project/A.stories.vue', '/project/cache')).toBeUndefined()
   })
 })
 
