@@ -19,6 +19,7 @@ export const ROUTER_IMPORT = '@v-contrib/storybook-vue-addon/router'
 const WITH_ROUTER = '__vueCsfWithRouter'
 const META_ROUTER = '__vueCsfMetaRouter'
 const H = '__vueCsfH'
+const META_PARAMETERS = '__vueCsfMetaParameters'
 
 /**
  * Stories are declared under a local name and exported by their export name,
@@ -153,6 +154,13 @@ export function generateCSF(parsed: ParsedResult, options: GenerateCSFOptions = 
     lines.push('')
   }
 
+  // Parameters expressions are evaluated once, then spread
+  const p = parsed.meta.parametersRef && META_PARAMETERS
+  if (p) {
+    lines.push(`const ${META_PARAMETERS} = ${parsed.meta.parametersRef}`)
+    lines.push('')
+  }
+
   // Generate default export (meta)
   lines.push('export default {')
   if (parsed.meta.title)
@@ -174,7 +182,6 @@ export function generateCSF(parsed: ParsedResult, options: GenerateCSFOptions = 
   // - Storybook's "save story" (Controls) rewrites the story file as CSF
   //   JavaScript, which fails on a .stories.vue file; hide it.
   // User meta parameters take precedence.
-  const p = parsed.meta.parametersRef
   if (p) {
     lines.push(`  parameters: {`)
     lines.push(`    ...${p},`)
@@ -205,13 +212,14 @@ export function generateCSF(parsed: ParsedResult, options: GenerateCSFOptions = 
   if (parsed.stories.length > 0) {
     const names = parsed.stories.map(story => toValidIdentifier(story.name))
     lines.push(`export { ${names.map(name => `${storyLocal(name)} as ${name}`).join(', ')} }`)
+    // Module exports are sorted by name; Docs pages follow this order instead.
+    // Storybook injects it only into .stories.{js,ts} files.
+    lines.push(`export const __namedExportsOrder = ${JSON.stringify(names)}`)
     lines.push('')
   }
 
-  // Add HMR support
-  lines.push('if (import.meta.hot) {')
-  lines.push('  import.meta.hot.accept()')
-  lines.push('}')
+  // No import.meta.hot.accept(): Storybook's stories module accepts story
+  // file updates (and strips such a boundary only from .stories.* files)
 
   return lines.join('\n')
 }
@@ -264,6 +272,7 @@ function generateStory(story: ParsedStoryResult, componentRef: string | undefine
     const baseStory = storyLocal(toValidIdentifier(story.extendsStory))
     lines.push(`const ${storyLocal(storyName)} = {`)
     lines.push(`  ...${baseStory},`)
+    lines.push(`  name: ${JSON.stringify(story.name)},`)
 
     if (story.argsRef) {
       lines.push(`  args: { ...${baseStory}.args, ...${story.argsRef} },`)
@@ -289,7 +298,14 @@ function generateStory(story: ParsedStoryResult, componentRef: string | undefine
     return lines.join('\n')
   }
 
+  // Parameters expression evaluated once, then spread
+  const p = story.parametersRef && `__vueCsfParameters_${storyName}`
+  if (p)
+    lines.push(`const ${p} = ${story.parametersRef}`)
+
   lines.push(`const ${storyLocal(storyName)} = {`)
+  // The name as written; Storybook would derive "With Icon" from the export name
+  lines.push(`  name: ${JSON.stringify(story.name)},`)
 
   // Args: the root component's attributes, with `:args` on top
   const hasStatic = Object.keys(story.staticProps).length > 0
@@ -339,16 +355,15 @@ function generateStory(story: ParsedStoryResult, componentRef: string | undefine
   // has no snippet of its own for these stories and transforms originalSource.
   const source = docsSource(story, componentRef, compiled)
   if (source) {
-    if (story.parametersRef) {
-      const p = story.parametersRef
+    if (p) {
       lines.push(`  parameters: { ...${p}, docs: { ...${p}?.docs, source: { ${source}, ...${p}?.docs?.source } } },`)
     }
     else {
       lines.push(`  parameters: { docs: { source: { ${source} } } },`)
     }
   }
-  else if (story.parametersRef) {
-    lines.push(`  parameters: ${story.parametersRef},`)
+  else if (p) {
+    lines.push(`  parameters: ${p},`)
   }
 
   lines.push('}')

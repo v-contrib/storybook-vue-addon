@@ -65,7 +65,13 @@ describe('.stories.vue with story content (SSR, real @vitejs/plugin-vue)', () =>
   })
 
   it('exports every story', () => {
-    expect(Object.keys(mod).filter(k => k !== 'default').sort())
+    expect(mod.__namedExportsOrder).toEqual([
+      'StaticSlots',
+      'ArgsSlots',
+      'MultipleRoots',
+      'Simple',
+    ])
+    expect(Object.keys(mod).filter(k => k !== 'default' && k !== '__namedExportsOrder').sort())
       .toEqual([
         'ArgsSlots',
         'MultipleRoots',

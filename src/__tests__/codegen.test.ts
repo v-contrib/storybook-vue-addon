@@ -13,8 +13,8 @@ import { parseStoriesVue } from '../parse'
 function evaluateCSF(code: string, scope: Record<string, unknown>): Record<string, any> {
   const body = code
     .replace(/^import \{ h as __vueCsfH \} from 'vue'$/m, '')
-    .replace('if (import.meta.hot) {\n  import.meta.hot.accept()\n}', '')
     .replace(/^export default /m, 'exports.default = ')
+    .replace(/^export const (\w+) = /gm, 'const $1 = exports.$1 = ')
     .replace(/^export \{ (.*) \}$/m, (_, list: string) =>
       `Object.assign(exports, { ${list.replace(/(\w+) as (\w+)/g, '$2: $1')} })`)
   const exports: Record<string, any> = {}
@@ -288,7 +288,7 @@ describe('generateCSF', () => {
     expect(result).toContain('...__vueCsfStory_Primary,')
   })
 
-  it('adds HMR support', () => {
+  it('leaves HMR to Storybook (no self-accepting module, also for .svue)', () => {
     const parsed: ParsedResult = {
       meta: { title: 'Test' },
       stories: [],
@@ -296,10 +296,7 @@ describe('generateCSF', () => {
       imports: [],
     }
 
-    const result = generateCSF(parsed)
-
-    expect(result).toContain('import.meta.hot')
-    expect(result).toContain('accept()')
+    expect(generateCSF(parsed)).not.toContain('import.meta.hot')
   })
 
   it('generates story with play function reference', () => {
@@ -829,5 +826,45 @@ ${stories}
     ['extending an unknown story', '<Story name="A" extends="Nope" />', /Nope/],
   ])('reports a story %s', (_case, stories, message) => {
     expect(() => parseStoriesVue(file('title="T"', stories))).toThrow(message)
+  })
+})
+
+describe('generateCSF story order, names and parameters', () => {
+  const source = `<script setup>
+import Card from './Card.vue'
+let metaCalls = 0
+let storyCalls = 0
+const metaParams = () => ({ calls: ++metaCalls, docs: { description: { component: 'C' } } })
+const storyParams = () => ({ calls: ++storyCalls, docs: { description: { story: 'S' } } })
+</script>
+<template>
+  <Meta title="T" :component="Card" :parameters="metaParams()" />
+  <Story name="zebra crossing" :parameters="storyParams()"><Card>Body</Card></Story>
+  <Story name="Apple"><Card /></Story>
+  <Story name="Apple pie" extends="Apple" />
+</template>`
+  const load = (): Record<string, any> => evaluateCSF(
+    generateCSF(parseStoriesVue(source)).replace(/^import .*$/gm, ''),
+    { Card: Button, __VueCsfStories: {} },
+  )
+
+  it('keeps the file order of stories for Docs pages', () => {
+    expect(load().__namedExportsOrder).toEqual(['ZebraCrossing', 'Apple', 'ApplePie'])
+  })
+
+  it('gives every story its name as written', () => {
+    const { ZebraCrossing, Apple, ApplePie } = load()
+
+    expect([ZebraCrossing.name, Apple.name, ApplePie.name]).toEqual(['zebra crossing', 'Apple', 'Apple pie'])
+  })
+
+  it('evaluates a parameters expression once', () => {
+    const { default: meta, ZebraCrossing } = load()
+
+    expect(meta.parameters.calls).toBe(1)
+    expect(meta.parameters.docs.description.component).toBe('C')
+    expect(ZebraCrossing.parameters.calls).toBe(1)
+    expect(ZebraCrossing.parameters.docs.description.story).toBe('S')
+    expect(ZebraCrossing.parameters.docs.source.originalSource).toBe('<Card>Body</Card>')
   })
 })
