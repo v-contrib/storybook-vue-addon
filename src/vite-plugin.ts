@@ -65,9 +65,12 @@ function skipStoryFiles(plugin: Plugin, isStory: (id: string) => boolean): void 
     : { ...transform, handler }
 }
 
-function isTypeScript(parsed: ParsedResult): boolean {
+/** Script language that needs transpiling, or undefined for plain JS */
+function scriptLang(parsed: ParsedResult): 'ts' | 'tsx' | 'jsx' | undefined {
   const lang = parsed.blocks?.scriptSetup?.attrs.lang ?? parsed.blocks?.script?.attrs.lang
-  return lang === 'ts' || lang === 'tsx'
+  return lang === 'ts' || lang === 'tsx' || lang === 'jsx'
+    ? lang
+    : undefined
 }
 
 export function vueStoriesPlugin(options: VueStoriesPluginOptions = {}): Plugin {
@@ -172,11 +175,15 @@ export function vueStoriesPlugin(options: VueStoriesPluginOptions = {}): Plugin 
         const csf = generateCSF(parsed, {
           storiesImport: `./${basename(file)}${STORIES_SFC_SUFFIX}`,
         })
-        if (!isTypeScript(parsed))
+        const lang = scriptLang(parsed)
+        if (!lang)
           return { code: csf, map: null }
 
-        // The CSF module carries the file's <script setup> code
-        const result = await transformWithOxc(csf, `${file}.ts`, { lang: 'ts' })
+        // The CSF module carries the file's script code; JSX uses Vue's runtime
+        const result = await transformWithOxc(csf, `${file}.${lang}`, {
+          lang,
+          jsx: { runtime: 'automatic', importSource: 'vue' },
+        })
         return { code: result.code, map: null }
       }
       catch (error) {

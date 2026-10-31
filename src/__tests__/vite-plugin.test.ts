@@ -86,6 +86,22 @@ describe('vueStoriesPlugin', () => {
     expect((await transform(plugin, STORY, 'Button.stories.vue?t=123')).code).toContain('__vueCsfStory_Default as Default')
   })
 
+  it.each(['tsx', 'jsx'])('compiles JSX in <script setup lang="%s"> with Vue\'s JSX runtime', async (lang) => {
+    const code = (await transform(vueStoriesPlugin(), `
+<script setup lang="${lang}">
+import Button from './Button.vue'
+const icon = <i class="icon" />
+</script>
+<template>
+  <Meta title="Test/Button" :component="Button" :args="{ icon }" />
+  <Story name="Default"><Button label="Test" /></Story>
+</template>
+`, 'Button.stories.vue')).code
+
+    expect(code).not.toContain('<i class')
+    expect(code).toMatch(/from ["']vue\/jsx-runtime["']/)
+  })
+
   it('ignores plugin-vue sub-requests', async () => {
     expect(await transform(vueStoriesPlugin(), STORY, 'Button.stories.vue?vue&type=style&index=0&lang.css')).toBeNull()
   })
