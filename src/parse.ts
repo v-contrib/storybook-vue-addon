@@ -7,9 +7,9 @@ import type {
   SimpleExpressionNode,
   TemplateChildNode,
 } from '@vue/compiler-core'
-import type { SFCBlock } from '@vue/compiler-sfc'
+import type { SFCBlock } from 'vue/compiler-sfc'
 import type { StoryContent } from './story-content'
-import { babelParse, compileTemplate, parse as parseSfc } from '@vue/compiler-sfc'
+import { babelParse, compileTemplate, parse as parseSfc } from 'vue/compiler-sfc'
 import { toValidIdentifier } from './identifier'
 import { analyzeStoryContent } from './story-content'
 

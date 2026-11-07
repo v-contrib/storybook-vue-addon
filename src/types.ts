@@ -1,15 +1,26 @@
 import type { Component } from 'vue'
 
+/**
+ * `router` prop: options for `withRouter` (`RouterStoryOptions` from
+ * `@v-contrib/storybook-vue-addon/router`), or `true` for the defaults.
+ * Typed loosely here so this entry does not need vue-router.
+ */
+export type RouterProp = Record<string, unknown> | boolean
+
+/** Props of `<Meta>` in a .stories.vue file */
 export interface MetaProps {
-  title: string
+  /** Without it, Storybook titles the file from its path */
+  title?: string
   component?: Component
   argTypes?: Record<string, ArgType>
   args?: Record<string, unknown>
   decorators?: Decorator[]
   parameters?: Record<string, unknown>
   tags?: string[]
+  router?: RouterProp
 }
 
+/** Props of `<Story>` in a .stories.vue file */
 export interface StoryProps {
   name: string
   args?: Record<string, unknown>
@@ -17,8 +28,9 @@ export interface StoryProps {
   decorators?: Decorator[]
   parameters?: Record<string, unknown>
   play?: PlayFunction
-  tests?: Record<string, TestFunction>
+  tests?: unknown
   extends?: string
+  router?: RouterProp
 }
 
 export interface ArgType {
@@ -60,29 +72,4 @@ export interface UserEvent {
   click: (element: HTMLElement) => Promise<void>
   type: (element: HTMLElement, text: string) => Promise<void>
   hover: (element: HTMLElement) => Promise<void>
-}
-
-export interface ParsedMeta extends MetaProps {
-  imports: ImportStatement[]
-  setupCode: string[]
-}
-
-export interface ParsedStory extends StoryProps {
-  slotContent: string | null
-  hasArgsSlot: boolean
-  staticProps: Record<string, unknown>
-}
-
-export interface ImportStatement {
-  source: string
-  specifiers: Array<{
-    imported: string
-    local: string
-    isDefault: boolean
-  }>
-}
-
-export interface TransformResult {
-  code: string
-  map?: null | { mappings: '' }
 }

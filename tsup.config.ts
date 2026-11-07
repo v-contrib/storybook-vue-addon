@@ -19,7 +19,7 @@ export default defineConfig({
     'vite',
     'storybook',
     /^storybook\//,
-    '@vue/compiler-sfc',
+    'vue/compiler-sfc',
   ],
   treeshake: true,
 })
