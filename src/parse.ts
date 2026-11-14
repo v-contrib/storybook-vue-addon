@@ -11,7 +11,7 @@ import type { SFCBlock } from 'vue/compiler-sfc'
 import type { StoryContent } from './story-content'
 import { babelParse, compileTemplate, parse as parseSfc } from 'vue/compiler-sfc'
 import { toValidIdentifier } from './identifier'
-import { analyzeStoryContent } from './story-content'
+import { analyzeStoryContent, findArgsSlot } from './story-content'
 
 /** A raw `<script>`/`<style>` block, as needed to rebuild an SFC */
 export interface SfcBlock {
@@ -302,19 +302,8 @@ function parseStoryNode(node: ElementNode): ParsedStoryResult {
     }
   }
 
-  // Check for scoped slot (args slot)
-  const defaultSlot = node.children.find(
-    (child): child is ElementNode =>
-      child.type === 1
-      && child.tag === 'template'
-      && child.props.some(
-        p =>
-          p.type === 7
-          && p.name === 'slot'
-          && p.arg?.type === 4
-          && (p.arg as SimpleExpressionNode).content === 'default',
-      ),
-  )
+  checkSlots(node, story.name)
+  const defaultSlot = findArgsSlot(node)
 
   if (defaultSlot) {
     story.hasArgsSlot = true
@@ -322,12 +311,8 @@ function parseStoryNode(node: ElementNode): ParsedStoryResult {
       p => p.type === 7 && p.name === 'slot',
     ) as DirectiveNode | undefined
 
-    if (slotProp?.exp?.type === 4) {
-      // Has destructured args
-      story.hasArgsSlot = (
-        slotProp.exp as SimpleExpressionNode
-      ).content.includes('args')
-    }
+    // checkSlots allows only `{ args }` as slot props
+    story.hasArgsSlot = !slotProp?.exp || (slotProp.exp as SimpleExpressionNode).content.includes('args')
     story.slotContent = extractSlotContent(defaultSlot)
   }
   else if (node.children.length > 0) {
@@ -337,6 +322,34 @@ function parseStoryNode(node: ElementNode): ParsedStoryResult {
   }
 
   return story
+}
+
+/**
+ * A story's content is the `<Story>` children, or one
+ * `<template #default="{ args }">` (also `v-slot` / `v-slot:default`).
+ * Other slot forms would only fail later, in the compiled template.
+ */
+function checkSlots(node: ElementNode, name: string): void {
+  const isSlot = (p: ElementNode['props'][number]): p is DirectiveNode => p.type === 7 && p.name === 'slot'
+  if (node.props.some(isSlot))
+    throw new Error(`<Story name="${name}">: put the story content in <template #default="{ args }"> instead of a slot on <Story>`)
+  for (const child of node.children) {
+    if (child.type !== 1)
+      continue
+    const slot = child.props.find(isSlot)
+    if (!slot)
+      continue
+    const arg = slot.arg?.type === 4
+      ? (slot.arg as SimpleExpressionNode).content
+      : 'default'
+    if (arg !== 'default')
+      throw new Error(`<Story name="${name}">: a #${arg} slot is not supported; slots of the component go inside the component`)
+    const exp = slot.exp?.type === 4
+      ? (slot.exp as SimpleExpressionNode).content.trim()
+      : ''
+    if (exp && !/^\{\s*args\s*\}$/.test(exp))
+      throw new Error(`<Story name="${name}">: the default slot takes only { args } as slot props, not "${exp}"`)
+  }
 }
 
 function extractSlotContent(slotNode: ElementNode): string {

@@ -181,3 +181,34 @@ const routes = []
     expect(result.stories[1].routerRef).toBe('true')
   })
 })
+
+describe('parseStoriesVue slot forms', () => {
+  const file = (story: string): string => `<script setup>
+import Button from './Button.vue'
+</script>
+<template>
+  <Meta title="T" :component="Button" />
+  ${story}
+</template>`
+
+  it.each([
+    ['#default="{ args }"', '<template #default="{ args }"><Button v-bind="args" /></template>'],
+    ['v-slot:default="{ args }"', '<template v-slot:default="{ args }"><Button v-bind="args" /></template>'],
+    ['v-slot="{ args }"', '<template v-slot="{ args }"><Button v-bind="args" /></template>'],
+    ['#default without slot props', '<template #default><Button label="x" /></template>'],
+  ])('accepts %s', (_form, content) => {
+    const [story] = parseStoriesVue(file(`<Story name="A">${content}</Story>`)).stories
+
+    expect(story.hasArgsSlot).toBe(true)
+    expect(story.content?.simple).toBe(true)
+  })
+
+  it.each([
+    ['v-slot on <Story> itself', '<Story name="A" v-slot="{ args }"><Button v-bind="args" /></Story>', /<template #default="\{ args \}">/],
+    ['#default on <Story> itself', '<Story name="A" #default="{ args }"><Button v-bind="args" /></Story>', /<template #default="\{ args \}">/],
+    ['slot props other than { args }', '<Story name="A"><template #default="props"><Button v-bind="props.args" /></template></Story>', /\{ args \}/],
+    ['a named slot', '<Story name="A"><template #header>Hi</template></Story>', /#header/],
+  ])('reports %s', (_form, story, message) => {
+    expect(() => parseStoriesVue(file(story))).toThrow(message)
+  })
+})

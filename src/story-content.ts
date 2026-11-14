@@ -114,7 +114,8 @@ function startWithLeadingSpace(source: string, offset: number): number {
 }
 
 /**
- * The `<template #default="{ args }">` child of a `<Story>`, if any.
+ * The `<template #default="{ args }">` child of a `<Story>`, if any (also
+ * `v-slot:default` and `v-slot`, which is the default slot too).
  */
 export function findArgsSlot(story: ElementNode): ElementNode | undefined {
   return story.children.find(
@@ -124,7 +125,7 @@ export function findArgsSlot(story: ElementNode): ElementNode | undefined {
       && child.props.some(
         p => p.type === PROP_DIRECTIVE
           && p.name === 'slot'
-          && staticArgName(p) === 'default',
+          && (!p.arg || staticArgName(p) === 'default'),
       ),
   )
 }
