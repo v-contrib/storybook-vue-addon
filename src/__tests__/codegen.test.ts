@@ -101,7 +101,10 @@ describe('generateCSF stories work with Storybook controls', () => {
     expect(Primary.parameters.docs.source.originalSource).toBe('<Button />')
   })
 
-  it('on Storybook 11 (server-side docgen) treats args that are not props as slots', () => {
+  it.each([
+    ['Storybook 11', 'docgenServer'],
+    ['Storybook 10.6 with experimentalDocgenServer', 'experimentalDocgenServer'],
+  ])('on %s (server-side docgen) treats args that are not props as slots', (_version, flag) => {
     const { Primary } = evaluateCSF(generateCSF(parsedWith(staticStory)), { Button })
     const args = {
       'label': 'Hi',
@@ -120,7 +123,7 @@ describe('generateCSF stories work with Storybook controls', () => {
     ])
 
     const features = (globalThis as any).FEATURES
-    ;(globalThis as any).FEATURES = { docgenServer: true }
+    ;(globalThis as any).FEATURES = { [flag]: true }
     try {
       const vnode = render()
       // Like Storybook 11's own Vue render: declared props and on* listeners stay props

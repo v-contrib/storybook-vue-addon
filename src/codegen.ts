@@ -32,7 +32,8 @@ function storyLocal(exportName: string): string {
 /**
  * Splits args into props and slots, like Storybook's own Vue render: args whose
  * argType is in the "slots" category (from docgen) fill the component's slots.
- * With Storybook 11's server-side docgen the preview has no docgen argTypes;
+ * With server-side docgen (Storybook 11, or 10.6+ with
+ * features.experimentalDocgenServer) the preview has no docgen argTypes;
  * there, like Storybook, args that are not declared props of the component
  * (and not on* listeners) are slots.
  * Empty values leave the slot alone; objects are shown as JSON.
@@ -54,7 +55,8 @@ const RENDER_HELPERS = `function __vueCsfSplitArgs(args, context) {
 }
 
 function __vueCsfDeclaredProps(component) {
-  if (!globalThis.FEATURES?.docgenServer || !component)
+  const features = globalThis.FEATURES
+  if (!(features?.docgenServer || features?.experimentalDocgenServer) || !component)
     return undefined
   const props = component.props
   return new Set((Array.isArray(props) ? props : Object.keys(props || {})).map(__vueCsfCamelize))
