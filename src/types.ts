@@ -29,6 +29,7 @@ export interface StoryProps {
   parameters?: Record<string, unknown>
   play?: PlayFunction
   tests?: unknown
+  tags?: string[]
   extends?: string
   router?: RouterProp
 }
