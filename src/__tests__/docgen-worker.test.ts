@@ -1,4 +1,4 @@
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -117,6 +117,32 @@ describe('preset (Storybook 11)', () => {
 
     expect(providers[0]).toBe(vue)
     expect(providers[1].moduleSpecifier).toMatch(/docgen-worker\.js$/)
+  })
+
+  it('indexes meta tags followed by story tags, following extends', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'vue-csf-tags-'))
+    const path = join(dir, 'Tags.stories.vue')
+    writeFileSync(path, `<template>
+  <Meta title="Tags" :tags="['autodocs']" />
+  <Story name="Plain"><div /></Story>
+  <Story name="Skipped" :tags="['!test']"><div /></Story>
+  <Story name="Extended" extends="Skipped" />
+  <Story name="Own" extends="Skipped" :tags="['slow']" />
+</template>`)
+    try {
+      const [indexer] = await experimental_indexers([])
+      const entries = await indexer.createIndex(path, {})
+
+      expect(Object.fromEntries(entries.map((e: any) => [e.exportName, e.tags]))).toEqual({
+        Plain: ['autodocs'],
+        Skipped: ['autodocs', '!test'],
+        Extended: ['autodocs', '!test'],
+        Own: ['autodocs', 'slow'],
+      })
+    }
+    finally {
+      rmSync(dir, { recursive: true })
+    }
   })
 
   it('indexes stories with the meta component as rawComponentPath', async () => {

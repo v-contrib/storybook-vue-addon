@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { componentImportSource } from './docgen-worker'
 import { toValidIdentifier } from './identifier'
-import { parseStoriesVue } from './parse'
+import { parseStoriesVue, storyTags } from './parse'
 import { STORY_FILE_PATTERN, vueStoriesPlugin } from './vite-plugin'
 
 export function viteFinal(config: any): any {
@@ -42,7 +42,11 @@ export async function experimental_indexers(existingIndexers: any[] = []): Promi
             // Without a title, Storybook titles the file from its path
             title: parsed.meta.title,
             type: 'story' as const,
-            tags: parsed.meta.tags || [],
+            // Storybook combines them: '!test' on a story drops the meta's 'test'
+            tags: [
+              ...parsed.meta.tags || [],
+              ...storyTags(story, parsed.stories),
+            ],
             importPath: fileName,
             ...(rawComponentPath && { rawComponentPath }),
           }

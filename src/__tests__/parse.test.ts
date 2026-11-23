@@ -211,4 +211,34 @@ import Button from './Button.vue'
   ])('reports %s', (_form, story, message) => {
     expect(() => parseStoriesVue(file(story))).toThrow(message)
   })
+
+  describe('unknown props', () => {
+    const parse = (meta: string, story = ''): unknown => parseStoriesVue(`<template>
+  <Meta ${meta} />
+  <Story name="A"${story}><div /></Story>
+</template>`)
+
+    it('accepts every documented prop', () => {
+      expect(() => parse(
+        'title="T" router :component="C" :args="{}" :arg-types="{}" :argTypes="{}" :decorators="[]" :parameters="{}" :tags="[]"',
+        ' :args="{}" :arg-types="{}" :decorators="[]" :parameters="{}" :play="p" :tests="t" :router="{}" :tags="[]"',
+      )).not.toThrow()
+      expect(() => parse('title="T"', ' router')).not.toThrow()
+    })
+
+    it('reports unknown props on <Meta> and <Story>', () => {
+      expect(() => parse('title="T" :parameter="{}"')).toThrow('<Meta>: unknown prop :parameter. Known: title, router, :component')
+      expect(() => parse('title="T"', ' foo="1"')).toThrow('<Story name="A">: unknown prop foo.')
+      expect(() => parse('title="T"', ' v-if="ok"')).toThrow('<Story name="A">: unknown prop v-if.')
+      expect(() => parse('title="T"', ' v-bind="all"')).toThrow('<Story name="A">: unknown prop v-bind.')
+    })
+
+    it('hints at the fix for props from other formats and static/bound mix-ups', () => {
+      expect(() => parseStoriesVue('<template><Meta title="T" /><Story title="A"><div /></Story></template>'))
+        .toThrow('<Story>: unknown prop title (use name="…" for the story name)')
+      expect(() => parse('name="T"')).toThrow('unknown prop name (use title="…" for the title)')
+      expect(() => parse(':title="t"')).toThrow('unknown prop :title (title is a static attribute: title="…")')
+      expect(() => parse('title="T"', ' tags="wip"')).toThrow('unknown prop tags (tags take an array: :tags="[\'…\']")')
+    })
+  })
 })

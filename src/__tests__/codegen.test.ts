@@ -810,6 +810,24 @@ ${stories}
     expect(() => parseStoriesVue(file('title="T" :tags="[myTag]"', ''))).toThrow(/tags/)
   })
 
+  it('puts story tags on the story; an extends story keeps its base tags unless it has its own', async () => {
+    const mod = await load(file('title="T" :tags="[\'autodocs\']"', `  <Story name="A" :tags="['!test', 'wip']"><Card /></Story>
+  <Story name="B" extends="A" />
+  <Story name="C" extends="A" :tags="['slow']" />
+  <Story name="D"><Card /></Story>`))
+
+    expect(mod.default.tags).toEqual(['autodocs'])
+    expect(mod.A.tags).toEqual(['!test', 'wip'])
+    expect(mod.B.tags).toEqual(['!test', 'wip'])
+    expect(mod.C.tags).toEqual(['slow'])
+    expect(mod.D.tags).toBeUndefined()
+  })
+
+  it('reports story tags it cannot read', () => {
+    expect(() => parseStoriesVue(file('title="T"', '  <Story name="A" :tags="\'wip\'"><Card /></Story>')))
+      .toThrow('<Story name="A" :tags="\'wip\'">: tags must be an array of strings')
+  })
+
   it('leaves out a missing title, so Storybook titles the file from its path', async () => {
     const { default: meta } = await load(file('', '  <Story name="A"><Card /></Story>'))
 

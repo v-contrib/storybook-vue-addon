@@ -56,9 +56,57 @@ export interface ParsedStoryResult {
   testsRef?: string
   /** `router` prop: options for the router helper (`true` for defaults) */
   routerRef?: string
+  /** Own tags; Storybook combines them with the meta tags */
+  tags?: string[]
   extendsStory?: string
   /** What is inside the story; absent for stories without content or with `extends` */
   content?: StoryContent
+}
+
+interface KnownProps {
+  /** Static attributes, like `title="…"` */
+  static: string[]
+  /** Bound props, like `:args="…"` */
+  bound: string[]
+}
+
+const META_PROPS: KnownProps = {
+  static: ['title', 'router'],
+  bound: [
+    'component',
+    'args',
+    'arg-types',
+    'argTypes',
+    'decorators',
+    'parameters',
+    'router',
+    'tags',
+  ],
+}
+
+const STORY_PROPS: KnownProps = {
+  static: ['name', 'extends', 'router'],
+  bound: [
+    'args',
+    'arg-types',
+    'argTypes',
+    'decorators',
+    'parameters',
+    'play',
+    'tests',
+    'router',
+    'tags',
+  ],
+}
+
+/** Hints for props from other story formats, and for static/bound mix-ups */
+const PROP_HINTS: Record<string, string> = {
+  '<Story title': 'use name="…" for the story name',
+  '<Meta name': 'use title="…" for the title',
+  ':title': 'title is a static attribute: title="…"',
+  ':name': 'name is a static attribute: name="…"',
+  ':extends': 'extends is a static attribute: extends="…"',
+  'tags': 'tags take an array: :tags="[\'…\']"',
 }
 
 function toBlock(block: SFCBlock | null): SfcBlock | undefined {
@@ -197,6 +245,7 @@ function extractMeta(children: TemplateChildNode[]): ParsedResult['meta'] {
   }
 
   const meta: ParsedResult['meta'] = {}
+  checkProps(metaNode, '<Meta>', META_PROPS)
 
   for (const prop of metaNode.props) {
     if (prop.type === 6) {
@@ -233,7 +282,7 @@ function extractMeta(children: TemplateChildNode[]): ParsedResult['meta'] {
         if (argName === 'router')
           meta.routerRef = value || 'true'
         if (argName === 'tags' && value)
-          meta.tags = parseTags(value)
+          meta.tags = parseTags(value, '<Meta')
       }
     }
   }
@@ -258,6 +307,7 @@ function parseStoryNode(node: ElementNode): ParsedStoryResult {
     slotContent: '',
   }
 
+  let tagsValue: string | undefined
   // Extract props from Story component
   for (const prop of node.props) {
     if (prop.type === 6) {
@@ -298,10 +348,17 @@ function parseStoryNode(node: ElementNode): ParsedStoryResult {
           story.argTypesRef = value
         if (argName === 'router')
           story.routerRef = value || 'true'
+        if (argName === 'tags')
+          tagsValue = value
       }
     }
   }
 
+  checkProps(node, story.name
+    ? `<Story name="${story.name}">`
+    : '<Story>', STORY_PROPS)
+  if (tagsValue)
+    story.tags = parseTags(tagsValue, `<Story name="${story.name}"`)
   checkSlots(node, story.name)
   const defaultSlot = findArgsSlot(node)
 
@@ -434,10 +491,48 @@ function extractStaticPropsFromContent(
 }
 
 /**
+ * Props that <Meta> or <Story> does not know would otherwise be dropped
+ * without a trace, e.g. a misspelled `:parameter` or `:tags` on the wrong
+ * element.
+ */
+function checkProps(node: ElementNode, label: string, known: KnownProps): void {
+  for (const prop of node.props) {
+    let written: string
+    let ok: boolean
+    if (prop.type === 6) {
+      written = prop.name
+      ok = known.static.includes(prop.name)
+    }
+    else if (prop.name === 'bind' && prop.arg?.type === 4 && prop.arg.isStatic) {
+      const arg = (prop.arg as SimpleExpressionNode).content
+      written = `:${arg}`
+      ok = known.bound.includes(arg)
+    }
+    else if (prop.name === 'slot') {
+      // checkSlots reports slots on <Story> with a better message
+      continue
+    }
+    else {
+      written = prop.loc.source.split('=', 1)[0]
+      ok = false
+    }
+    if (ok)
+      continue
+    const hint = PROP_HINTS[`<${node.tag} ${written}`] ?? PROP_HINTS[written]
+    throw new Error(`${label}: unknown prop ${written}${hint
+      ? ` (${hint})`
+      : ''}. Known: ${[
+      ...known.static,
+      ...known.bound.map(b => `:${b}`),
+    ].join(', ')}`)
+  }
+}
+
+/**
  * `:tags` must be an array of string literals: the indexer needs the tags
  * without running the story file.
  */
-function parseTags(value: string): string[] {
+function parseTags(value: string, element: string): string[] {
   let elements: Node[] | undefined
   try {
     const statement = babelParse(`(${value})`).program.body[0]
@@ -446,7 +541,7 @@ function parseTags(value: string): string[] {
   }
   catch {}
   if (!elements || !elements.every(element => element?.type === 'StringLiteral'))
-    throw new Error(`<Meta :tags="${value}">: tags must be an array of strings, like :tags="['autodocs']"`)
+    throw new Error(`${element} :tags="${value}">: tags must be an array of strings, like :tags="['autodocs']"`)
   return elements.map(element => (element as StringLiteral).value)
 }
 
@@ -467,4 +562,20 @@ function checkStoryNames(stories: ParsedStoryResult[]): void {
       throw new Error(`<Story name="${story.name}"> extends "${story.extendsStory}", which is not a story above it in this file`)
     seen.set(exportName, story.name)
   }
+}
+
+/**
+ * Tags of a story as Storybook sees them, without the meta tags: its own
+ * tags, or those of the story it extends.
+ */
+export function storyTags(story: ParsedStoryResult, stories: ParsedStoryResult[]): string[] {
+  if (story.tags)
+    return story.tags
+  if (!story.extendsStory)
+    return []
+  const exportName = toValidIdentifier(story.extendsStory)
+  const base = stories.find(s => toValidIdentifier(s.name) === exportName)
+  return base
+    ? storyTags(base, stories)
+    : []
 }

@@ -282,6 +282,10 @@ function generateStory(story: ParsedStoryResult, componentRef: string | undefine
     if (story.argTypesRef) {
       lines.push(`  argTypes: { ...${baseStory}.argTypes, ...${story.argTypesRef} },`)
     }
+    // Own tags replace the base story's, so an extends story can drop a '!test'
+    if (story.tags) {
+      lines.push(`  tags: ${JSON.stringify(story.tags)},`)
+    }
 
     if (decorators) {
       lines.push(`  decorators: ${decorators},`)
@@ -319,6 +323,9 @@ function generateStory(story: ParsedStoryResult, componentRef: string | undefine
     lines.push(`  args: ${formatObject(story.staticProps)},`)
   if (story.argTypesRef) {
     lines.push(`  argTypes: ${story.argTypesRef},`)
+  }
+  if (story.tags) {
+    lines.push(`  tags: ${JSON.stringify(story.tags)},`)
   }
 
   // Render function. Like Storybook's default Vue render, return a render
