@@ -163,6 +163,15 @@ export function generateCSF(parsed: ParsedResult, options: GenerateCSFOptions = 
     lines.push('')
   }
 
+  // A string here is almost always resolveComponent('X') outside setup(), which
+  // returns 'X'. Storybook would fail later with a TypeError about __docgenInfo.
+  if (parsed.meta.componentRef) {
+    const ref = parsed.meta.componentRef
+    lines.push(`if (typeof (${ref}) === 'string')`)
+    lines.push(`  throw new Error(${JSON.stringify(`<Meta :component="${ref}">: got the string "`)} + (${ref}) + ${JSON.stringify(`" instead of a component. resolveComponent() outside setup() returns the name it was given; import the component in <script setup> instead.`)})`)
+    lines.push('')
+  }
+
   // Generate default export (meta)
   lines.push('export default {')
   if (parsed.meta.title)

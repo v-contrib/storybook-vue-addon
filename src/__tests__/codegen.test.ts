@@ -828,6 +828,23 @@ ${stories}
       .toThrow('<Story name="A" :tags="\'wip\'">: tags must be an array of strings')
   })
 
+  it('reports a <Meta> component that is a string, as resolveComponent() at module scope returns', async () => {
+    const source = file('title="T"', '  <Story name="A"><Card /></Story>')
+      .replace(':component="Card"', ':component="resolveComponent(\'Card\')"')
+    const code = await compileStoryFile(source)
+
+    expect(() => evaluateCSF(code.replace(/^import .*$/gm, ''), {
+      resolveComponent: (name: string) => name,
+      Card: Button,
+      __VueCsfStories: {},
+    })).toThrow('<Meta :component="resolveComponent(\'Card\')">: got the string "Card" instead of a component. resolveComponent() outside setup() returns the name it was given; import the component in <script setup> instead.')
+    expect(() => evaluateCSF(code.replace(/^import .*$/gm, ''), {
+      resolveComponent: () => Button,
+      Card: Button,
+      __VueCsfStories: {},
+    })).not.toThrow()
+  })
+
   it('leaves out a missing title, so Storybook titles the file from its path', async () => {
     const { default: meta } = await load(file('', '  <Story name="A"><Card /></Story>'))
 

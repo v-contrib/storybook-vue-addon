@@ -140,6 +140,11 @@ export function parseStoriesVue(code: string): ParsedResult {
   if (!descriptor.template) {
     throw new Error('Template is required in .stories.vue files')
   }
+  // storybook-vue-addon (the earlier addon with this file extension) syntax
+  if (descriptor.customBlocks.some(block => block.type === 'docs'))
+    throw new Error('<docs> blocks are not supported: write the docs page as a Storybook MDX file instead')
+  if (descriptor.template.ast?.children.some(child => child.type === 1 && child.tag === 'Stories'))
+    throw new Error('<Stories> is storybook-vue-addon syntax: use a self-closing <Meta title="…" :component="…" /> followed by the <Story> elements')
 
   const templateAst = compileTemplate({
     source: descriptor.template.content,

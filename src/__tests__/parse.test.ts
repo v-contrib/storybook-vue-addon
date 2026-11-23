@@ -241,4 +241,11 @@ import Button from './Button.vue'
       expect(() => parse('title="T"', ' tags="wip"')).toThrow('unknown prop tags (tags take an array: :tags="[\'…\']")')
     })
   })
+
+  it('points storybook-vue-addon files at the new syntax', () => {
+    expect(() => parseStoriesVue('<template><Stories title="T"><Story title="A"><div /></Story></Stories></template>'))
+      .toThrow('<Stories> is storybook-vue-addon syntax: use a self-closing <Meta title="…" :component="…" /> followed by the <Story> elements')
+    expect(() => parseStoriesVue('<template><Meta title="T" /></template>\n<docs>\n# Docs\n</docs>'))
+      .toThrow('<docs> blocks are not supported')
+  })
 })
