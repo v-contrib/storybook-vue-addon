@@ -1,0 +1,43 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": [
+    "config:recommended",
+    "helpers:pinGitHubActionDigests"
+  ],
+  "automerge": true,
+  "automergeType": "pr",
+  "platformAutomerge": true,
+  "prConcurrentLimit": 1,
+  "branchConcurrentLimit": 1,
+  "prHourlyLimit": 0,
+  "lockFileMaintenance": {
+    "enabled": false
+  },
+  "packageRules": [
+    {
+      "description": "Peer ranges stay broad: users bring their own versions",
+      "matchDepTypes": ["peerDependencies"],
+      "enabled": false
+    },
+    {
+      "description": "One PR for the Storybook packages",
+      "matchPackageNames": ["storybook", "@storybook/**"],
+      "groupName": "Storybook"
+    },
+    {
+      "description": "One PR for Vite and its Vue plugin",
+      "matchPackageNames": ["vite", "@vitejs/**"],
+      "groupName": "Vite"
+    },
+    {
+      "description": "One PR for Vue and Vue Router",
+      "matchPackageNames": ["vue", "vue-router", "@vue/**"],
+      "groupName": "Vue"
+    },
+    {
+      "description": "vue-router-4 is the Vue Router 4 test install (npm:vue-router@^4)",
+      "matchDepNames": ["vue-router-4"],
+      "allowedVersions": "<5"
+    }
+  ]
+}
