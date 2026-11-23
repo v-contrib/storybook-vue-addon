@@ -190,6 +190,41 @@ describe('configResolved', () => {
     expect(handler).toHaveBeenCalledTimes(1)
   })
 
+  it('guards Vue Macros transforms, but not the story module\'s JS transforms', async () => {
+    const macros = [
+      'unplugin-vue-named-template-pre',
+      'unplugin-vue-macros',
+      'vue-macros-define-props',
+      'unplugin-vue-setup-sfc',
+    ]
+      .map((name): Plugin => ({
+        name,
+        transform: vi.fn(() => `${name} output`),
+      }))
+    const js = [
+      'unplugin-auto-import',
+      'unplugin-vue-components',
+      'unplugin-vue-i18n',
+      'unplugin-vue-router',
+    ]
+      .map((name): Plugin => ({
+        name,
+        transform: vi.fn(),
+      }))
+    const jsTransforms = js.map(p => p.transform)
+    configResolved(vueStoriesPlugin(), [
+      ...macros,
+      ...js,
+    ])
+
+    for (const plugin of macros) {
+      expect(await transform(plugin, 'csf', '/src/Button.stories.vue')).toBeNull()
+      expect(await transform(plugin, 'sfc', `/src/Button.stories.vue${STORIES_SFC_SUFFIX}`)).toBe(`${plugin.name} output`)
+      expect(await transform(plugin, 'sfc', '/src/Button.vue')).toBe(`${plugin.name} output`)
+    }
+    expect(js.map(p => p.transform)).toEqual(jsTransforms)
+  })
+
   it('leaves unrelated plugins alone', () => {
     const t = vi.fn()
     const other: Plugin = { name: 'some-plugin', transform: t }

@@ -29,6 +29,21 @@ const VUE_DOCGEN_PLUGINS = [
   'storybook:vue-component-meta-plugin',
 ]
 
+/**
+ * Vue Macros plugins (`unplugin-vue-macros` and the `@vue-macros/*` packages)
+ * parse `*.vue` ids as SFCs. Story files reach them as CSF JavaScript, which
+ * named-template rejects outright. The stories component (`*.__stories__.vue`)
+ * is a real SFC and keeps going through them.
+ *
+ * Not on this list on purpose: unplugin-auto-import and unplugin-vue-components
+ * work on JavaScript and must keep transforming story modules.
+ */
+const VUE_MACROS_PLUGIN = /^(?:vue-macros-|unplugin-vue-(?:macros|better-define|chain-call|define-|export-|hoist-static|jsx-directive|named-template|reactivity-transform|script-lang|setup-|short-))/
+
+function isSfcPreprocessor(name: string): boolean {
+  return VUE_MACROS_PLUGIN.test(name)
+}
+
 type TransformHandler = Extract<NonNullable<Plugin['transform']>, (...args: any[]) => any>
 
 function cleanPath(id: string): string {
@@ -118,6 +133,9 @@ export function vueStoriesPlugin(options: VueStoriesPluginOptions = {}): Plugin 
         }
         else if (VUE_DOCGEN_PLUGINS.includes(plugin.name)) {
           skipStoryFiles(plugin, skipForDocgen)
+        }
+        else if (isSfcPreprocessor(plugin.name)) {
+          skipStoryFiles(plugin, isStory)
         }
       }
     },

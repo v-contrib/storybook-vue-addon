@@ -1,7 +1,7 @@
 {
   "name": "@v-contrib/storybook-vue-addon",
   "type": "module",
-  "version": "0.8.0",
+  "version": "0.9.0",
   "description": "Write Storybook stories using Vue SFC's",
   "author": "Jogai",
   "license": "MPL-2.0",
@@ -62,14 +62,17 @@
   "devDependencies": {
     "@antfu/eslint-config": "^10.0.0",
     "@types/node": "^26.6.6",
-    "@vitejs/plugin-vue": "^6.0.6",
-    "eslint": "^10.2.0",
+    "@vitejs/plugin-vue": "^6.0.11",
+    "eslint": "^10.15.0",
     "tsup": "^9.0.0",
     "typescript": "^6.0.3",
-    "vitest": "^4.1.4",
-    "vue": "^3.5.32",
-    "vue-router": "^5.2.0",
-    "vue-router-4": "npm:vue-router@^4.6.4"
+    "unplugin-auto-import": "^21.1.0",
+    "unplugin-vue-components": "^32.1.0",
+    "unplugin-vue-macros": "^2.14.5",
+    "vitest": "^5.1.1",
+    "vue": "^3.5.46",
+    "vue-router": "^5.5.1",
+    "vue-router-4": "npm:vue-router@^4.6.5"
   },
   "peerDependenciesMeta": {
     "vue-router": {
