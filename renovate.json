@@ -38,6 +38,14 @@
       "description": "vue-router-4 is the Vue Router 4 test install (npm:vue-router@^4)",
       "matchDepNames": ["vue-router-4"],
       "allowedVersions": "<5"
+    },
+    {
+      "description": "The beta example follows Storybook 11 prereleases",
+      "matchFileNames": ["examples/vue3-beta/package.json"],
+      "matchPackageNames": ["storybook", "@storybook/**"],
+      "ignoreUnstable": false,
+      "respectLatest": false,
+      "groupName": "Storybook 11 beta"
     }
   ]
 }

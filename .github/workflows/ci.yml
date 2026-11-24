@@ -33,6 +33,7 @@ jobs:
       - run: npm run test:vue-router-4
       - run: npm run build
       - run: npm run example:vite:build
+      - run: npm run example:beta:build
 
   # One stable check name for branch protection, whatever the matrix
   ci:

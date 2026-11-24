@@ -1,0 +1,23 @@
+{
+  "name": "example-vue3-beta",
+  "type": "module",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Storybook 11 beta + Vite example for @v-contrib/storybook-vue-addon",
+  "scripts": {
+    "storybook": "storybook dev -p 6007",
+    "build-storybook": "storybook build"
+  },
+  "dependencies": {
+    "vue": "^3.5.46"
+  },
+  "devDependencies": {
+    "@storybook/addon-docs": "11.0.0-beta.3",
+    "@storybook/vue3-vite": "11.0.0-beta.3",
+    "@v-contrib/storybook-vue-addon": "file:../..",
+    "@vitejs/plugin-vue": "^6.0.11",
+    "storybook": "11.0.0-beta.3",
+    "typescript": "^6.0.3",
+    "vite": "^8.3.8"
+  }
+}
