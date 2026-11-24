@@ -1,7 +1,7 @@
 {
   "name": "@v-contrib/storybook-vue-addon",
   "type": "module",
-  "version": "0.9.0",
+  "version": "10.0.0",
   "description": "Write Storybook stories using Vue SFC's",
   "author": "Jogai",
   "license": "MPL-2.0",
@@ -42,6 +42,9 @@
   "files": [
     "dist"
   ],
+  "workspaces": [
+    "examples/vue3-vite"
+  ],
   "scripts": {
     "build": "tsup",
     "dev": "tsup --watch",
@@ -50,6 +53,8 @@
     "lint": "eslint",
     "lint:fix": "eslint --fix",
     "prepublishOnly": "npm run build",
+    "example:vite": "npm run build && npm run storybook -w examples/vue3-vite",
+    "example:vite:build": "npm run build && npm run build-storybook -w examples/vue3-vite",
     "test:vue-router-4": "VUE_ROUTER=4 vitest run src/__tests__/router.test.ts"
   },
   "peerDependencies": {
