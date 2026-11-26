@@ -32,8 +32,9 @@ jobs:
       - run: npm run test:run
       - run: npm run test:vue-router-4
       - run: npm run build
-      - run: npm run example:vite:build
-      - run: npm run example:beta:build
+      # The example:*:build scripts rebuild the addon first, so call the workspaces directly
+      - run: npm run build-storybook -w examples/vue3-vite
+      - run: npm run build-storybook -w examples/vue3-beta
 
   # One stable check name for branch protection, whatever the matrix
   ci:
