@@ -31,4 +31,4 @@ jobs:
       - run: npm run test:vue-router-4
       # prepublishOnly builds the package. Trusted publishing (npm 11.5.1+, bundled with
       # Node 26) logs in with the workflow's OIDC token and adds provenance by itself
-      - run: npm publish --access public
+      - run: npm publish --access public --loglevel verbose
