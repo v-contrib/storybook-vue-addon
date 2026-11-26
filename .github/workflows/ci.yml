@@ -27,6 +27,8 @@ jobs:
         with:
           node-version: ${{ matrix.node }}
           cache: npm
+      # The lockfile is written by npm 11; npm 10 (Node 22) wants optional peers it leaves out
+      - run: npm install -g npm@11
       - run: npm ci
       - run: npm run lint
       - run: npm run test:run
